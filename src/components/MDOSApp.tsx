@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { PROJECTS, NOTIFICATIONS, ACTIVITY, USERS, NOTIF_EVENTS, SCREENING_THRESHOLDS } from '@/data/mock'
 
 const EMPTY_PROJECT_FORM = {
@@ -171,11 +171,252 @@ function NewProjectModal({
 }
 
 
+// ── Schedule data from Clarksville Master Schedule ────────────────────────────
+const CLARKSVILLE_SCHEDULE = [
+  // PRE-CONSTRUCTION
+  { phase:'PRE-CONSTRUCTION', task:'Finalize Construction Documents', status:'Complete', progress:100, startOffset:0, days:2, critical:false },
+  { phase:'PRE-CONSTRUCTION', task:'Design', status:'Complete', progress:100, startOffset:0, days:62, critical:false },
+  { phase:'PRE-CONSTRUCTION', task:'Well Permit', status:'Critical', progress:20, startOffset:62, days:30, critical:true },
+  { phase:'PRE-CONSTRUCTION', task:'Truss Engineering', status:'Complete', progress:100, startOffset:0, days:30, critical:false },
+  { phase:'PRE-CONSTRUCTION', task:'Contractor Authorization Forms', status:'Complete', progress:100, startOffset:0, days:1, critical:false },
+  { phase:'PRE-CONSTRUCTION', task:'Residential Permit Approval', status:'Complete', progress:100, startOffset:0, days:106, critical:false },
+  { phase:'PRE-CONSTRUCTION', task:'FPL Utility Easement', status:'Critical', progress:70, startOffset:0, days:1, critical:true },
+  { phase:'PRE-CONSTRUCTION', task:'Order Materials', status:'Critical', progress:0, startOffset:0, days:14, critical:true },
+  // HORIZONTAL CONSTRUCTION
+  { phase:'HORIZONTAL', task:'Install Permit Box & Silt Fence', status:'Most Critical', progress:0, startOffset:108, days:1, critical:true },
+  { phase:'HORIZONTAL', task:'Earthwork Fill & Grade', status:'Scheduled', progress:10, startOffset:109, days:3, critical:false },
+  { phase:'HORIZONTAL', task:'Gravel Fill', status:'Critical', progress:0, startOffset:110, days:2, critical:true },
+  { phase:'HORIZONTAL', task:'Compaction Test 1', status:'Inspection', progress:0, startOffset:112, days:1, critical:false },
+  { phase:'HORIZONTAL', task:'Formwork', status:'Critical', progress:0, startOffset:113, days:1, critical:true },
+  { phase:'HORIZONTAL', task:'Plumbing Rough-In', status:'Scheduled', progress:0, startOffset:114, days:1, critical:false },
+  { phase:'HORIZONTAL', task:'Vapor Barrier', status:'Critical', progress:0, startOffset:115, days:1, critical:true },
+  { phase:'HORIZONTAL', task:'Slab Reinforcement', status:'Critical', progress:0, startOffset:115, days:1, critical:true },
+  { phase:'HORIZONTAL', task:'Electrical Rough-In', status:'Critical', progress:0, startOffset:116, days:1, critical:true },
+  { phase:'HORIZONTAL', task:'Pre-pour Slab Inspection', status:'Inspection', progress:0, startOffset:117, days:1, critical:false },
+  { phase:'HORIZONTAL', task:'Slab Pour', status:'Critical', progress:0, startOffset:118, days:1, critical:true },
+  { phase:'HORIZONTAL', task:'Slab Curing Period', status:'Critical', progress:0, startOffset:118, days:5, critical:true },
+  { phase:'HORIZONTAL', task:'Septic System', status:'Critical', progress:20, startOffset:159, days:7, critical:true },
+  { phase:'HORIZONTAL', task:'Well System Install', status:'Critical', progress:0, startOffset:160, days:2, critical:true },
+  // PRINTING
+  { phase:'PRINTING', task:'Develop G-Code', status:'Critical', progress:0, startOffset:118, days:3, critical:true },
+  { phase:'PRINTING', task:'Test G-Code', status:'Critical', progress:0, startOffset:119, days:2, critical:true },
+  { phase:'PRINTING', task:'Transport Printing Equipment to Site', status:'Critical', progress:0, startOffset:123, days:1, critical:true },
+  { phase:'PRINTING', task:'Print Equipment Setup', status:'Critical', progress:0, startOffset:123, days:1, critical:true },
+  { phase:'PRINTING', task:'Print Duration', status:'Critical', progress:0, startOffset:123, days:14, critical:true },
+  { phase:'PRINTING', task:'Print Cure Period', status:'Critical', progress:0, startOffset:137, days:3, critical:true },
+  { phase:'PRINTING', task:'3D Wall Sealant', status:'Critical', progress:0, startOffset:137, days:1, critical:true },
+  // SHELL
+  { phase:'SHELL', task:'Wall Cutouts', status:'Critical', progress:0, startOffset:123, days:14, critical:true },
+  { phase:'SHELL', task:'Rough-in Electrical', status:'Critical', progress:0, startOffset:123, days:14, critical:true },
+  { phase:'SHELL', task:'Insulation (Wall Cavity)', status:'Critical', progress:0, startOffset:123, days:14, critical:true },
+  { phase:'SHELL', task:'Seal Control Joints', status:'Critical', progress:0, startOffset:137, days:2, critical:true },
+  { phase:'SHELL', task:'Install Top Plate', status:'Critical', progress:0, startOffset:139, days:1, critical:true },
+  { phase:'SHELL', task:'Roof Truss Install', status:'Critical', progress:0, startOffset:147, days:1, critical:true },
+  { phase:'SHELL', task:'Roof Plywood Deck Install', status:'Critical', progress:0, startOffset:148, days:1, critical:true },
+  { phase:'SHELL', task:'Roof Sheathing and Shingles Install', status:'Critical', progress:0, startOffset:150, days:1, critical:true },
+  { phase:'SHELL', task:'Exterior Window and Door Install', status:'Critical', progress:0, startOffset:151, days:3, critical:true },
+  { phase:'SHELL', task:'Dry-In Inspection', status:'Inspection', progress:0, startOffset:153, days:1, critical:false },
+  { phase:'SHELL', task:'Exterior Painting', status:'Critical', progress:0, startOffset:153, days:1, critical:true },
+  // CORE + MEP
+  { phase:'CORE + MEP', task:'Interior Framing', status:'Critical', progress:0, startOffset:139, days:2, critical:true },
+  { phase:'CORE + MEP', task:'HVAC Duct + Air Handler Install', status:'Critical', progress:0, startOffset:154, days:1, critical:true },
+  { phase:'CORE + MEP', task:'Plumbing Top Out', status:'Critical', progress:0, startOffset:155, days:2, critical:true },
+  { phase:'CORE + MEP', task:'Electrical Top Out', status:'Critical', progress:0, startOffset:157, days:2, critical:true },
+  { phase:'CORE + MEP', task:'Roof and Interior Insulation', status:'Critical', progress:0, startOffset:159, days:1, critical:true },
+  { phase:'CORE + MEP', task:'Open Wall Inspection', status:'Inspection', progress:0, startOffset:160, days:1, critical:false },
+  { phase:'CORE + MEP', task:'Drywall', status:'Critical', progress:0, startOffset:161, days:4, critical:true },
+  { phase:'CORE + MEP', task:'Interior Painting', status:'Critical', progress:0, startOffset:165, days:2, critical:true },
+  { phase:'CORE + MEP', task:'Flooring', status:'Critical', progress:0, startOffset:167, days:2, critical:true },
+  { phase:'CORE + MEP', task:'Cabinets and Counters', status:'Critical', progress:0, startOffset:169, days:2, critical:true },
+  { phase:'CORE + MEP', task:'Electrical Trim-Out', status:'Critical', progress:0, startOffset:165, days:1, critical:true },
+  { phase:'CORE + MEP', task:'Plumbing Trim-Out', status:'Critical', progress:0, startOffset:166, days:1, critical:true },
+  { phase:'CORE + MEP', task:'HVAC Trim-Out', status:'Critical', progress:0, startOffset:167, days:1, critical:true },
+  { phase:'CORE + MEP', task:'Power and HVAC Inspection', status:'Inspection', progress:0, startOffset:168, days:1, critical:false },
+  // FINAL
+  { phase:'FINAL', task:'Trim and Décor', status:'Critical', progress:0, startOffset:170, days:4, critical:true },
+  { phase:'FINAL', task:'Exterior Fill + Grading + Topsoil', status:'Unassigned', progress:0, startOffset:170, days:2, critical:false },
+  { phase:'FINAL', task:'Irrigation System Install', status:'Unassigned', progress:0, startOffset:172, days:2, critical:false },
+  { phase:'FINAL', task:'Sod Install', status:'Unassigned', progress:0, startOffset:174, days:2, critical:false },
+  { phase:'FINAL', task:'Final Punch List', status:'Unassigned', progress:0, startOffset:177, days:2, critical:false },
+  { phase:'FINAL', task:'Final Inspection', status:'Inspection', progress:0, startOffset:179, days:1, critical:false },
+  { phase:'FINAL', task:'Closeout and Occupancy Certificate', status:'Goal', progress:0, startOffset:180, days:7, critical:true },
+]
+
+const PHASE_COLORS: Record<string,string> = {
+  'PRE-CONSTRUCTION': '#0C447C',
+  'HORIZONTAL': '#854F0B',
+  'PRINTING': '#085041',
+  'SHELL': '#3C3489',
+  'CORE + MEP': '#5F3089',
+  'FINAL': '#3B6D11',
+}
+
+const STATUS_COLORS: Record<string,{bg:string,text:string}> = {
+  'Complete':      {bg:'#EAF3DE',text:'#3B6D11'},
+  'Critical':      {bg:'#FAEEDA',text:'#854F0B'},
+  'Most Critical': {bg:'#FCEBEB',text:'#A32D2D'},
+  'Scheduled':     {bg:'#E6F1FB',text:'#185FA5'},
+  'Inspection':    {bg:'#EEEDFE',text:'#3C3489'},
+  'Goal':          {bg:'#E1F5EE',text:'#085041'},
+  'Unassigned':    {bg:'#f0f0ec',text:'#888'},
+}
+
+
+function ScheduleTab({p}: {p: any}) {
+  const [schedView, setSchedView] = React.useState<'critical'|'gantt'>('critical')
+  const tasks = p.id === 'clk-001' ? CLARKSVILLE_SCHEDULE : []
+  const phases = Array.from(new Set(tasks.map((t:any) => t.phase)))
+  const totalDays = tasks.length > 0 ? Math.max(...tasks.map((t:any) => t.startOffset + t.days)) : 0
+
+  if (tasks.length === 0) return (
+    <div className="panel" style={{textAlign:'center',padding:40}}>
+      <div style={{fontSize:32,marginBottom:12}}>📅</div>
+      <div style={{fontWeight:500,marginBottom:6}}>No Schedule Uploaded</div>
+      <div style={{fontSize:12,color:'#888'}}>Upload a master schedule Excel file to generate the critical path and Gantt chart.</div>
+    </div>
+  )
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="panel" style={{marginBottom:12,padding:'12px 16px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontWeight:500,fontSize:13}}>Clarksville Construction Schedule</div>
+            <div style={{fontSize:11,color:'#888',marginTop:2}}>Schedule Lead: Daniel Brown · West Lynn, Clarksville Texas · {tasks.length} tasks · {totalDays} day timeline</div>
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            {(['critical','gantt'] as const).map(v => (
+              <button key={v} onClick={()=>setSchedView(v)}
+                style={{fontSize:11,padding:'5px 12px',borderRadius:7,border:`0.5px solid ${schedView===v?'var(--mdi-green)':'rgba(0,0,0,0.15)'}`,
+                  background:schedView===v?'var(--mdi-green)':'#fff',color:schedView===v?'#fff':'#555',cursor:'pointer',fontWeight:schedView===v?500:400}}>
+                {v==='critical'?'📋 Critical Path':'📊 Gantt Chart'}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Legend */}
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}>
+          {Object.entries(STATUS_COLORS).map(([s,c]) => (
+            <span key={s} style={{fontSize:10,padding:'2px 8px',borderRadius:10,background:c.bg,color:c.text}}>{s}</span>
+          ))}
+        </div>
+      </div>
+
+      {schedView === 'critical' ? (
+        /* ── Critical Path View ── */
+        <div>
+          {phases.map(phase => {
+            const phaseTasks = tasks.filter((t:any) => t.phase === phase)
+            const phaseColor = PHASE_COLORS[phase] || '#555'
+            return (
+              <div key={phase} style={{marginBottom:10}}>
+                <div style={{background:phaseColor,color:'#fff',padding:'6px 14px',borderRadius:'8px 8px 0 0',fontSize:11,fontWeight:500,letterSpacing:'0.06em',textTransform:'uppercase',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <span>{phase}</span>
+                  <span style={{fontSize:10,opacity:0.7}}>{phaseTasks.filter((t:any)=>t.progress===100).length}/{phaseTasks.length} complete</span>
+                </div>
+                <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.1)',borderTop:'none',borderRadius:'0 0 8px 8px',overflow:'hidden'}}>
+                  {/* Column headers */}
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 90px 80px 60px 80px',padding:'5px 12px',background:'#f5f4f0',fontSize:10,color:'#888',fontWeight:500,borderBottom:'0.5px solid rgba(0,0,0,0.08)'}}>
+                    <span>Task</span><span>Status</span><span>Assigned To</span><span style={{textAlign:'center'}}>Progress</span><span style={{textAlign:'right'}}>Duration</span>
+                  </div>
+                  {phaseTasks.map((t:any, i:number) => {
+                    const sc = STATUS_COLORS[t.status] || STATUS_COLORS['Unassigned']
+                    return (
+                      <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 90px 80px 60px 80px',padding:'7px 12px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',alignItems:'center',background:t.critical&&t.progress<100?'rgba(252,235,235,0.3)':'#fff'}}>
+                        <div style={{fontSize:12,color:'#1a1a1a',display:'flex',alignItems:'center',gap:6}}>
+                          {t.critical && t.progress<100 && <span style={{fontSize:10}}>🔴</span>}
+                          {t.status==='Inspection' && <span style={{fontSize:10}}>🔍</span>}
+                          {t.status==='Goal' && <span style={{fontSize:10}}>🏁</span>}
+                          {t.status==='Complete' && <span style={{fontSize:10}}>✅</span>}
+                          {t.task}
+                        </div>
+                        <span style={{fontSize:10,padding:'2px 6px',borderRadius:8,background:sc.bg,color:sc.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.status}</span>
+                        <span style={{fontSize:11,color:'#888'}}>D. Brown</span>
+                        <div style={{textAlign:'center'}}>
+                          <div style={{background:'#e8e8e0',borderRadius:4,height:6,overflow:'hidden'}}>
+                            <div style={{height:'100%',borderRadius:4,background:t.progress===100?'#3B6D11':t.critical?'#E24B4A':'var(--mdi-gold)',width:`${t.progress}%`}}/>
+                          </div>
+                          <div style={{fontSize:9,color:'#aaa',marginTop:2}}>{t.progress}%</div>
+                        </div>
+                        <div style={{textAlign:'right',fontSize:11,color:'#555'}}>{t.days}d</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        /* ── Gantt Chart View ── */
+        <div className="panel" style={{overflowX:'auto',padding:'14px 0'}}>
+          <div style={{minWidth: Math.max(900, totalDays * 4 + 240)}}>
+            {/* Timeline header */}
+            <div style={{display:'flex',borderBottom:'0.5px solid rgba(0,0,0,0.1)',paddingBottom:6,marginBottom:4,paddingLeft:240}}>
+              {Array.from({length:Math.ceil(totalDays/30)},(_,i) => (
+                <div key={i} style={{width:i===Math.ceil(totalDays/30)-1?`${(totalDays%30||30)*4}px`:'120px',fontSize:10,color:'#888',flexShrink:0,textAlign:'center',borderRight:'0.5px solid rgba(0,0,0,0.06)',paddingRight:4}}>
+                  Month {i+1}
+                </div>
+              ))}
+            </div>
+            {/* Week markers */}
+            <div style={{display:'flex',marginBottom:8,paddingLeft:240,position:'relative'}}>
+              {Array.from({length:Math.ceil(totalDays/7)},(_,i) => (
+                <div key={i} style={{width:'28px',flexShrink:0,borderLeft:'0.5px solid rgba(0,0,0,0.05)',height:8}}/>
+              ))}
+            </div>
+            {/* Rows */}
+            {phases.map(phase => {
+              const phaseTasks = tasks.filter((t:any) => t.phase === phase)
+              const phaseColor = PHASE_COLORS[phase] || '#555'
+              return (
+                <React.Fragment key={phase}>
+                  <div style={{display:'flex',alignItems:'center',background:phaseColor,padding:'4px 12px',marginBottom:2}}>
+                    <div style={{width:228,fontSize:10,fontWeight:500,color:'#fff',letterSpacing:'0.06em',textTransform:'uppercase',flexShrink:0}}>{phase}</div>
+                  </div>
+                  {phaseTasks.map((t:any, i:number) => {
+                    const sc = STATUS_COLORS[t.status] || STATUS_COLORS['Unassigned']
+                    const barLeft = t.startOffset * 4
+                    const barWidth = Math.max(t.days * 4, 8)
+                    return (
+                      <div key={i} style={{display:'flex',alignItems:'center',padding:'2px 0',borderBottom:'0.5px solid rgba(0,0,0,0.04)',minHeight:28}}>
+                        <div style={{width:240,fontSize:11,color:'#1a1a1a',flexShrink:0,paddingLeft:16,paddingRight:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}}>
+                          {t.critical && t.progress<100 && <span style={{fontSize:9,color:'#E24B4A',flexShrink:0}}>●</span>}
+                          {t.task}
+                        </div>
+                        <div style={{flex:1,position:'relative',height:20}}>
+                          <div style={{position:'absolute',left:`${barLeft}px`,width:`${barWidth}px`,height:16,top:2,borderRadius:4,
+                            background:t.status==='Complete'?'#3B6D11':t.status==='Inspection'?'#534AB7':t.status==='Goal'?'#085041':t.critical?'#C9A227':'#6BAED6',
+                            opacity:t.progress===0&&t.status!=='Complete'?0.7:1,
+                            display:'flex',alignItems:'center',paddingLeft:4,overflow:'hidden'}}>
+                            {t.progress > 0 && t.progress < 100 && (
+                              <div style={{position:'absolute',left:0,top:0,height:'100%',width:`${t.progress}%`,background:'rgba(255,255,255,0.3)',borderRadius:'4px 0 0 4px'}}/>
+                            )}
+                            {barWidth > 30 && <span style={{fontSize:9,color:'#fff',whiteSpace:'nowrap',overflow:'hidden',zIndex:1,position:'relative'}}>{t.days}d</span>}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </React.Fragment>
+              )
+            })}
+            {/* Today marker */}
+            <div style={{position:'absolute',left:`${240 + 108*4}px`,top:0,bottom:0,width:2,background:'rgba(173,56,21,0.4)',pointerEvents:'none',zIndex:10}}/>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 export default function MDOSApp() {
   const [role, setRole] = useState<Role>('admin')
   const [view, setView] = useState<View>('dashboard')
   const [activeProject, setActiveProject] = useState(PROJECTS[0])
-  const [projectTab, setProjectTab] = useState<'overview'|'bim'|'refax'|'twin'>('overview')
+  const [projectTab, setProjectTab] = useState<'overview'|'bim'|'refax'|'twin'|'schedule'>('overview')
   const [notifToggles, setNotifToggles] = useState<Record<string,{teams:boolean,email:boolean}>>(() =>
     Object.fromEntries(NOTIF_EVENTS.map(e => [e.key, {teams:e.teams, email:e.email}]))
   )
@@ -453,9 +694,9 @@ export default function MDOSApp() {
         {/* Main content */}
         <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
           <div style={{background:'#fff',borderBottom:'0.5px solid rgba(0,0,0,0.1)',display:'flex',padding:'0 16px'}}>
-            {(['overview','bim','refax','twin'] as const).map(t=>(
+            {(['overview','bim','refax','twin','schedule'] as const).map(t=>(
               <div key={t} className={`tab${projectTab===t?' active':''}`} onClick={()=>setProjectTab(t)}>
-                {t==='overview'?'⊞ Overview':t==='bim'?'📦 BIM & STL':t==='refax'?'🧠 REfax Report':'📡 Digital Twin'}
+                {t==='overview'?'⊞ Overview':t==='bim'?'📦 BIM & STL':t==='refax'?'🧠 REfax Report':t==='twin'?'📡 Digital Twin':'📅 Schedule'}
               </div>
             ))}
           </div>
@@ -464,6 +705,7 @@ export default function MDOSApp() {
             {projectTab==='bim' && <BimTab p={p}/>}
             {projectTab==='refax' && <RefaxTab p={p}/>}
             {projectTab==='twin' && <TwinTab p={p}/>}
+          {projectTab==='schedule' && <ScheduleTab p={p}/>}
           </div>
         </div>
       </div>
