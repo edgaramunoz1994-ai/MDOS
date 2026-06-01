@@ -1,7 +1,13 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import { PROJECTS, NOTIFICATIONS, ACTIVITY, USERS, NOTIF_EVENTS, SCREENING_THRESHOLDS } from '@/data/mock'
+
+const EMPTY_PROJECT_FORM = {
+  name: '', address: '', apn: '', city: '', state: 'TX', market: 'austin',
+  goal: 'RESIDENTIAL_SFH', method: 'THREEDCP', units: '', lotAcres: '',
+  zoning: '', budgetMin: '', budgetMax: '', partner: '', notes: '',
+}
 
 type View = 'dashboard' | 'projects' | 'project-detail' | 'ifindy' | 'roles' | 'notifications'
 type Role = 'admin' | 'team' | 'partner' | 'investor'
@@ -48,6 +54,11 @@ export default function MDOSApp() {
     bmin: '1.5', bmax: '4.5', zoning: 'SF-3',
   })
   const [uploadFlash, setUploadFlash] = useState(false)
+  const [showNewProject, setShowNewProject] = useState(false)
+  const [newProjectStep, setNewProjectStep] = useState(1)
+  const [newProjectForm, setNewProjectForm] = useState(EMPTY_PROJECT_FORM)
+  const [projects, setProjects] = useState(PROJECTS)
+  const [newProjectSuccess, setNewProjectSuccess] = useState(false)
 
   const nav = ROLE_NAV[role]
   const user = USERS[role]
@@ -177,7 +188,7 @@ export default function MDOSApp() {
 
   // ── Dashboard view ────────────────────────────────────────────────────────────
   const DashboardView = () => {
-    const visibleProjects = role === 'partner' ? PROJECTS.slice(0,2) : PROJECTS.slice(0,4)
+    const visibleProjects = role === 'partner' ? projects.slice(0,2) : projects.slice(0,4)
     return (
       <div style={{padding:20}}>
         <div className="section-label">Portfolio Overview</div>
@@ -243,12 +254,12 @@ export default function MDOSApp() {
 
   // ── Projects list ─────────────────────────────────────────────────────────────
   const ProjectsView = () => {
-    const visible = role==='partner' ? PROJECTS.slice(0,2) : PROJECTS
+    const visible = role==='partner' ? projects.slice(0,2) : projects
     return (
       <div style={{padding:20}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
           <div className="section-label" style={{marginBottom:0}}>All Projects ({visible.length})</div>
-          {(role==='admin'||role==='team') && <button className="btn btn-primary">+ New Project</button>}
+          {(role==='admin'||role==='team') && <button className="btn btn-primary" onClick={()=>{setShowNewProject(true);setNewProjectStep(1);setNewProjectForm(EMPTY_PROJECT_FORM);setNewProjectSuccess(false)}}>+ New Project</button>}
         </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
           {visible.map(p=>(
@@ -729,9 +740,205 @@ export default function MDOSApp() {
     </div>
   )
 
+  // ── New Project Modal ─────────────────────────────────────────────────────────
+  const submitNewProject = () => {
+    const id = 'mdi-' + Date.now().toString(36)
+    const newP = {
+      id,
+      name: newProjectForm.name || 'Untitled Project',
+      address: newProjectForm.address,
+      apn: newProjectForm.apn || id.toUpperCase(),
+      market: newProjectForm.city + (newProjectForm.city ? ', ' : '') + newProjectForm.state,
+      state: newProjectForm.state,
+      goal: newProjectForm.goal,
+      method: newProjectForm.method === 'THREEDCP' ? '3DCP' : newProjectForm.method === 'SCIP' ? 'SCIP' : newProjectForm.method === 'MODULAR' ? 'Modular' : 'Tunnel-form',
+      vendor: 'TBD',
+      status: 'SCREENING',
+      pct: 0,
+      units: parseInt(newProjectForm.units) || 0,
+      partner: newProjectForm.partner || 'TBD',
+      msaExecuted: false,
+      lotAcres: parseFloat(newProjectForm.lotAcres) || null,
+      zoning: newProjectForm.zoning || null,
+      budgetMin: parseFloat(newProjectForm.budgetMin) * 1_000_000 || null,
+      budgetMax: parseFloat(newProjectForm.budgetMax) * 1_000_000 || null,
+      landCost: null, constructionCost: null, projectedRevenue: null, targetMargin: null,
+      startDate: new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),
+      bimDate: null, printDate: null, estCompletion: 'TBD',
+      stlVersions: [], bimFiles: [], roboticFiles: [], refax: null, twin: null,
+      comms: newProjectForm.notes ? [{ author: 'Edgar Munoz', date: new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}), body: newProjectForm.notes }] : [],
+      moduleStatus: ['active','todo','todo','todo','todo','todo'],
+    }
+    setProjects(prev => [newP, ...prev])
+    setNewProjectSuccess(true)
+    setTimeout(() => { setShowNewProject(false); setView('projects') }, 1800)
+  }
+
+  const NPField = ({label, children}: {label:string, children:React.ReactNode}) => (
+    <div style={{marginBottom:12}}>
+      <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3,fontWeight:500}}>{label}</label>
+      {children}
+    </div>
+  )
+
+  const NewProjectModal = () => {
+    if (!showNewProject) return null
+    const stepTitles = ['Project Identity','Site Parameters','Financial Setup']
+    const npf = (key: keyof typeof newProjectForm) => newProjectForm[key]
+    const setF = (key: keyof typeof newProjectForm, val: string) =>
+      setNewProjectForm(f => ({...f, [key]: val}))
+
+    return (
+      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}
+        onClick={e => { if (e.target === e.currentTarget) setShowNewProject(false) }}>
+        <div style={{background:'#fff',borderRadius:12,width:520,maxHeight:'88vh',overflow:'hidden',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}}>
+          {/* Modal header */}
+          <div style={{background:'var(--mdi-green)',padding:'16px 20px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div>
+              <div style={{fontSize:11,color:'rgba(255,255,255,0.5)',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:2}}>New Project</div>
+              <div style={{fontSize:15,fontWeight:500,color:'#fff'}}>{stepTitles[newProjectStep-1]}</div>
+            </div>
+            <div style={{display:'flex',gap:6,alignItems:'center'}}>
+              {[1,2,3].map(s => (
+                <div key={s} style={{width:24,height:4,borderRadius:2,background:s<=newProjectStep?'var(--mdi-gold)':'rgba(255,255,255,0.2)'}}/>
+              ))}
+              <button onClick={()=>setShowNewProject(false)} style={{marginLeft:10,background:'transparent',border:'none',color:'rgba(255,255,255,0.6)',fontSize:18,cursor:'pointer',lineHeight:1}}>✕</button>
+            </div>
+          </div>
+
+          {/* Modal body */}
+          <div style={{flex:1,overflowY:'auto',padding:'20px 24px'}}>
+            {newProjectSuccess ? (
+              <div style={{textAlign:'center',padding:'40px 20px'}}>
+                <div style={{fontSize:40,marginBottom:12}}>✅</div>
+                <div style={{fontWeight:500,fontSize:15,marginBottom:6}}>Project Created</div>
+                <div style={{fontSize:12,color:'#888'}}>{newProjectForm.name} has been added to your pipeline and is ready for iFindy screening.</div>
+              </div>
+            ) : newProjectStep === 1 ? (
+              <>
+                <NPField label="Project Name *">
+                  <input value={npf('name')} onChange={e=>setF('name',e.target.value)} placeholder="e.g. Clarksville Phase 2"/>
+                </NPField>
+                <NPField label="Full Address *">
+                  <input value={npf('address')} onChange={e=>setF('address',e.target.value)} placeholder="e.g. 123 Main St, Austin TX 78701"/>
+                </NPField>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                  <NPField label="City">
+                    <input value={npf('city')} onChange={e=>setF('city',e.target.value)} placeholder="Austin"/>
+                  </NPField>
+                  <NPField label="State">
+                    <select value={npf('state')} onChange={e=>setF('state',e.target.value)}>
+                      <option value="TX">Texas</option>
+                      <option value="FL">Florida</option>
+                      <option value="UK">UK</option>
+                      <option value="KAZ">Kazakhstan</option>
+                      <option value="KSA">Saudi Arabia</option>
+                      <option value="OTHER">Other</option>
+                    </select>
+                  </NPField>
+                </div>
+                <NPField label="APN (Assessor Parcel Number)">
+                  <input value={npf('apn')} onChange={e=>setF('apn',e.target.value)} placeholder="e.g. 0103050202 (optional)"/>
+                </NPField>
+                <NPField label="Alpha JV Partner / GC">
+                  <input value={npf('partner')} onChange={e=>setF('partner',e.target.value)} placeholder="e.g. Modstone / Daniel Brown"/>
+                </NPField>
+                <NPField label="Development Goal">
+                  <select value={npf('goal')} onChange={e=>setF('goal',e.target.value)}>
+                    <option value="RESIDENTIAL_SFH">Residential SFH</option>
+                    <option value="MULTIFAMILY_BTR">Multifamily / BTR</option>
+                    <option value="HOSPITALITY_STR">Hospitality / STR</option>
+                    <option value="MIXED_USE">Mixed-use</option>
+                    <option value="INDUSTRIAL_LOGISTICS">Industrial / Logistics</option>
+                  </select>
+                </NPField>
+              </>
+            ) : newProjectStep === 2 ? (
+              <>
+                <NPField label="Primary Construction Method">
+                  <select value={npf('method')} onChange={e=>setF('method',e.target.value)}>
+                    <option value="THREEDCP">3DCP — 3D Concrete Printing</option>
+                    <option value="SCIP">SCIP — Structural Concrete Insulated Panel</option>
+                    <option value="MODULAR">Modular</option>
+                    <option value="TUNNEL_FORM">Tunnel-form</option>
+                    <option value="HYBRID">Hybrid</option>
+                  </select>
+                </NPField>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                  <NPField label="Target Units">
+                    <input type="number" value={npf('units')} onChange={e=>setF('units',e.target.value)} placeholder="e.g. 4"/>
+                  </NPField>
+                  <NPField label="Lot Size (acres)">
+                    <input type="number" value={npf('lotAcres')} onChange={e=>setF('lotAcres',e.target.value)} placeholder="e.g. 0.18"/>
+                  </NPField>
+                </div>
+                <NPField label="Zoning Code">
+                  <input value={npf('zoning')} onChange={e=>setF('zoning',e.target.value)} placeholder="e.g. SF-3, MF-2, PUD"/>
+                </NPField>
+                <NPField label="Initial Notes">
+                  <textarea value={npf('notes')} onChange={e=>setF('notes',e.target.value)}
+                    placeholder="Any relevant context — deed restrictions, water access, infrastructure notes, etc."
+                    style={{width:'100%',height:72,resize:'none',fontSize:12,padding:'6px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}/>
+                </NPField>
+              </>
+            ) : (
+              <>
+                <div style={{background:'#f5f4f0',borderRadius:8,padding:'10px 12px',marginBottom:16,fontSize:11,color:'#666'}}>
+                  Budget range is used in the Module 01 iFindy feasibility scoring to evaluate developer budget vs. estimated construction cost.
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                  <NPField label="Budget Min ($M)">
+                    <input type="number" value={npf('budgetMin')} onChange={e=>setF('budgetMin',e.target.value)} placeholder="e.g. 1.5"/>
+                  </NPField>
+                  <NPField label="Budget Max ($M)">
+                    <input type="number" value={npf('budgetMax')} onChange={e=>setF('budgetMax',e.target.value)} placeholder="e.g. 4.5"/>
+                  </NPField>
+                </div>
+                {/* Summary */}
+                <div style={{background:'#f5f4f0',borderRadius:8,padding:12,marginTop:8}}>
+                  <div style={{fontSize:11,fontWeight:500,color:'#555',marginBottom:8}}>Project Summary</div>
+                  {[
+                    ['Name', newProjectForm.name || '—'],
+                    ['Address', newProjectForm.address || '—'],
+                    ['State', newProjectForm.state],
+                    ['Goal', newProjectForm.goal.replace(/_/g,' ')],
+                    ['Method', newProjectForm.method],
+                    ['Units', newProjectForm.units || '—'],
+                    ['Partner', newProjectForm.partner || '—'],
+                    ['Budget', newProjectForm.budgetMin && newProjectForm.budgetMax ? `$${newProjectForm.budgetMin}M – $${newProjectForm.budgetMax}M` : '—'],
+                  ].map(([l,v]) => (
+                    <div key={l} style={{display:'flex',justifyContent:'space-between',fontSize:11,padding:'3px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
+                      <span style={{color:'#888'}}>{l}</span>
+                      <span style={{fontWeight:500,maxWidth:280,textAlign:'right'}}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Modal footer */}
+          {!newProjectSuccess && (
+            <div style={{padding:'14px 24px',borderTop:'0.5px solid rgba(0,0,0,0.1)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'#fafaf8'}}>
+              <button className="btn" onClick={()=>{ if(newProjectStep>1) setNewProjectStep(s=>s-1); else setShowNewProject(false) }}>
+                {newProjectStep === 1 ? 'Cancel' : '← Back'}
+              </button>
+              <div style={{fontSize:11,color:'#aaa'}}>Step {newProjectStep} of 3</div>
+              {newProjectStep < 3
+                ? <button className="btn btn-primary" onClick={()=>setNewProjectStep(s=>s+1)} disabled={newProjectStep===1 && !newProjectForm.name}>Next →</button>
+                : <button className="btn btn-primary" onClick={submitNewProject}>Create Project ✓</button>
+              }
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   // ── App shell ─────────────────────────────────────────────────────────────────
   return (
     <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
+      <NewProjectModal/>
       <Sidebar/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
         <Topbar/>
