@@ -16,7 +16,7 @@ type TabRole = Role
 const ROLE_NAV: Record<Role, View[]> = {
   admin:    ['dashboard','projects','ifindy','vertikaal','roles','notifications'],
   team:     ['dashboard','projects','ifindy','vertikaal','notifications'],
-  partner:  ['dashboard','projects'],
+  partner:  ['dashboard','projects','ifindy'],
   investor: ['dashboard'],
 }
 
@@ -1309,7 +1309,7 @@ export default function MDOSApp() {
 
   // ── Dashboard view ────────────────────────────────────────────────────────────
   const DashboardView = () => {
-    const visibleProjects = role === 'partner' ? projects.slice(0,2) : projects.slice(0,4)
+    const visibleProjects = projects.slice(0,4)
     return (
       <div style={{padding:20}}>
         <div className="section-label">Portfolio Overview</div>
@@ -1375,12 +1375,12 @@ export default function MDOSApp() {
 
   // ── Projects list ─────────────────────────────────────────────────────────────
   const ProjectsView = () => {
-    const visible = role==='partner' ? projects.slice(0,2) : projects
+    const visible = projects
     return (
       <div style={{padding:20}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
           <div className="section-label" style={{marginBottom:0}}>All Projects ({visible.length})</div>
-          {(role==='admin'||role==='team') && <button className="btn btn-primary" onClick={()=>{setShowNewProject(true);setNewProjectStep(1);setNewProjectForm(EMPTY_PROJECT_FORM);setNewProjectSuccess(false)}}>+ New Project</button>}
+          {(role==='admin'||role==='team'||role==='partner') && <button className="btn btn-primary" onClick={()=>{setShowNewProject(true);setNewProjectStep(1);setNewProjectForm(EMPTY_PROJECT_FORM);setNewProjectSuccess(false)}}>+ New Project</button>}
         </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
           {visible.map(p=>(
@@ -1389,7 +1389,7 @@ export default function MDOSApp() {
                 <div><div style={{fontWeight:500,fontSize:13}}>{p.name}</div><div style={{fontSize:11,color:'#888',marginTop:1}}>{p.market}</div></div>
                 <div style={{display:'flex',gap:6,alignItems:'center'}}>
                   <span className={`pill pill-${p.status.toLowerCase()}`}>{STATUS_LABELS[p.status]}</span>
-                  {(role==='admin'||role==='team') && <button onClick={e=>{e.stopPropagation();deleteProject(p.id)}} style={{background:'transparent',border:'none',cursor:'pointer',fontSize:14,color:'#ccc',padding:'0 2px',lineHeight:1}} title="Delete project">✕</button>}
+                  {(role==='admin'||role==='team'||role==='partner') && <button onClick={e=>{e.stopPropagation();deleteProject(p.id)}} style={{background:'transparent',border:'none',cursor:'pointer',fontSize:14,color:'#ccc',padding:'0 2px',lineHeight:1}} title="Delete project">✕</button>}
                 </div>
               </div>
               <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:10}}>
