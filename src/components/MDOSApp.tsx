@@ -955,25 +955,30 @@ async function handleNotesFile(
   setUploadProgress('Reading file...')
 
   try {
-    // Read file as text
-    const text = await new Promise<string>((resolve, reject) => {
+    // Read file as base64 — works for all formats including binary docx/pdf
+    const base64Data = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
-      reader.onload = e => resolve(e.target?.result as string || '')
+      reader.onload = e => {
+        const result = e.target?.result as string || ''
+        resolve(result.includes(',') ? result.split(',')[1] : result)
+      }
       reader.onerror = () => reject(new Error('Failed to read file'))
-      reader.readAsText(file)
+      reader.readAsDataURL(file)
     })
 
-    if (!text.trim()) throw new Error('File appears to be empty')
+    if (!base64Data) throw new Error('File appears to be empty')
 
-    setUploadProgress('Sending to Claude for summarization...')
-
-    // Truncate to ~12,000 chars to stay within token limits
-    const truncated = text.length > 12000 ? text.slice(0, 12000) + "\n\n[transcript truncated]" : text
+    setUploadProgress('Parsing file and sending to Claude...')
 
     const response = await fetch('/api/summarize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transcript: truncated, projectId })
+      body: JSON.stringify({
+        base64Data,
+        mimeType: file.type,
+        fileName: file.name,
+        projectId
+      })
     })
 
     if (!response.ok) {
