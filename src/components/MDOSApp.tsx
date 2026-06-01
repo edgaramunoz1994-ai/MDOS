@@ -1004,6 +1004,196 @@ async function handleNotesFile(
 }
 
 
+
+// ── MapPanel — Leaflet.js + OpenStreetMap, no API key needed ─────────────────
+// Loads Leaflet via CDN in a useEffect, renders into a div ref
+// Free: OpenStreetMap tiles, Nominatim geocoding
+
+declare global {
+  interface Window {
+    L: any
+    _mdosMap: any
+    _mdosMarker: any
+  }
+}
+
+function MapPanel({
+  coords, address, loading, onGeocode
+}: {
+  coords: {lat:number,lng:number,zoom:number} | null
+  address: string
+  loading: boolean
+  onGeocode: (addr: string) => void
+}) {
+  const mapRef = React.useRef<HTMLDivElement>(null)
+  const [searchVal, setSearchVal] = React.useState('')
+  const [mapReady, setMapReady] = React.useState(false)
+  const [mapStyle, setMapStyle] = React.useState<'street'|'satellite'>('satellite')
+
+  // Tile URL sets
+  const TILES = {
+    street: {
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attr: '© OpenStreetMap contributors',
+    },
+    satellite: {
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      attr: '© Esri, Maxar, Earthstar Geographics',
+    },
+  }
+
+  // Load Leaflet CSS + JS once
+  React.useEffect(() => {
+    if (document.getElementById('leaflet-css')) {
+      setMapReady(true)
+      return
+    }
+    const link = document.createElement('link')
+    link.id = 'leaflet-css'
+    link.rel = 'stylesheet'
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+    document.head.appendChild(link)
+
+    const script = document.createElement('script')
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+    script.onload = () => setMapReady(true)
+    document.head.appendChild(script)
+  }, [])
+
+  // Initialize map
+  React.useEffect(() => {
+    if (!mapReady || !mapRef.current || window._mdosMap) return
+    const L = window.L
+    if (!L) return
+
+    const map = L.map(mapRef.current, {
+      center: [30.2672, -97.7431], // Austin default
+      zoom: 12,
+      zoomControl: true,
+    })
+
+    L.tileLayer(TILES.satellite.url, {
+      attribution: TILES.satellite.attr,
+      maxZoom: 21,
+    }).addTo(map)
+
+    window._mdosMap = map
+  }, [mapReady])
+
+  // Update map when coords change
+  React.useEffect(() => {
+    if (!window._mdosMap || !coords) return
+    const L = window.L
+    if (!L) return
+
+    window._mdosMap.setView([coords.lat, coords.lng], coords.zoom)
+
+    if (window._mdosMarker) {
+      window._mdosMarker.setLatLng([coords.lat, coords.lng])
+    } else {
+      const icon = L.divIcon({
+        className: '',
+        html: '<div style="width:16px;height:16px;background:#C9A227;border:3px solid #0D3B2E;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      })
+      window._mdosMarker = L.marker([coords.lat, coords.lng], {icon})
+        .addTo(window._mdosMap)
+        .bindPopup(address || 'Parcel')
+        .openPopup()
+    }
+  }, [coords])
+
+  // Switch tile layer
+  React.useEffect(() => {
+    if (!window._mdosMap || !window.L) return
+    const L = window.L
+    window._mdosMap.eachLayer((layer: any) => {
+      if (layer._url) window._mdosMap.removeLayer(layer)
+    })
+    const t = TILES[mapStyle]
+    L.tileLayer(t.url, {attribution: t.attr, maxZoom: 21}).addTo(window._mdosMap)
+  }, [mapStyle])
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (searchVal.trim()) {
+      onGeocode(searchVal)
+      setSearchVal('')
+    }
+  }
+
+  return (
+    <div style={{width:300,background:'#fff',borderLeft:'0.5px solid rgba(0,0,0,0.1)',flexShrink:0,display:'flex',flexDirection:'column'}}>
+      {/* Header */}
+      <div style={{padding:'10px 12px',borderBottom:'0.5px solid rgba(0,0,0,0.1)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <div style={{fontWeight:500,fontSize:12,display:'flex',alignItems:'center',gap:5}}>
+          🗺 Parcel Map
+          {loading && <span style={{fontSize:10,color:'#888'}}>Locating...</span>}
+        </div>
+        <div style={{display:'flex',gap:4}}>
+          {(['satellite','street'] as const).map(s=>(
+            <button key={s} onClick={()=>setMapStyle(s)}
+              style={{fontSize:10,padding:'3px 8px',borderRadius:5,border:`0.5px solid ${mapStyle===s?'var(--mdi-green)':'rgba(0,0,0,0.15)'}`,
+                background:mapStyle===s?'var(--mdi-green)':'#fff',color:mapStyle===s?'#fff':'#555',cursor:'pointer'}}>
+              {s==='satellite'?'Satellite':'Street'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Map */}
+      <div style={{flex:1,position:'relative',minHeight:280}}>
+        {!mapReady && (
+          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'#f5f4f0',fontSize:12,color:'#aaa'}}>
+            Loading map...
+          </div>
+        )}
+        <div ref={mapRef} style={{width:'100%',height:'100%'}}/>
+        {coords && (
+          <div style={{position:'absolute',bottom:8,left:8,zIndex:1000,background:'rgba(13,59,46,0.85)',color:'#fff',fontSize:10,padding:'4px 8px',borderRadius:5,maxWidth:180,lineHeight:1.4}}>
+            <div style={{fontWeight:500}}>📍 {address.split(',')[0]}</div>
+            <div style={{opacity:0.7}}>{coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Search bar */}
+      <form onSubmit={handleSearch} style={{padding:'10px 12px',borderTop:'0.5px solid rgba(0,0,0,0.1)',display:'flex',gap:6}}>
+        <input
+          value={searchVal}
+          onChange={e=>setSearchVal(e.target.value)}
+          placeholder="Search address or APN..."
+          style={{flex:1,fontSize:11,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:6}}
+        />
+        <button type="submit"
+          style={{padding:'5px 10px',background:'var(--mdi-green)',color:'#fff',border:'none',borderRadius:6,fontSize:11,cursor:'pointer',flexShrink:0}}>
+          Go
+        </button>
+      </form>
+
+      {/* Map attribution + links */}
+      <div style={{padding:'6px 12px',borderTop:'0.5px solid rgba(0,0,0,0.08)',background:'#fafaf8'}}>
+        <div style={{fontSize:9,color:'#aaa',marginBottom:4}}>
+          {mapStyle==='satellite'?'Imagery: Esri / Maxar':'Tiles: OpenStreetMap'} · Geocoding: Nominatim
+        </div>
+        {coords && (
+          <div style={{display:'flex',gap:6}}>
+            <a href={'https://www.google.com/maps?q='+coords.lat+','+coords.lng}
+              target="_blank" rel="noopener noreferrer"
+              style={{fontSize:10,color:'#185FA5',textDecoration:'none'}}>Open in Google Maps ↗</a>
+            <span style={{fontSize:10,color:'#ccc'}}>·</span>
+            <a href={'https://www.openstreetmap.org/?mlat='+coords.lat+'&mlon='+coords.lng+'#map=18/'+coords.lat+'/'+coords.lng}
+              target="_blank" rel="noopener noreferrer"
+              style={{fontSize:10,color:'#185FA5',textDecoration:'none'}}>OpenStreetMap ↗</a>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
 // ── ParcelDocsPanel — top-level component (no brace issues) ──────────────────
 type ParcelDoc = {id:string,name:string,type:string,size:string,b64:string,usedInScore:boolean}
 type ScanState = Record<string,{scanning:boolean,text:string}>
@@ -1170,6 +1360,9 @@ export default function MDOSApp() {
   )
   const [screeningResult, setScreeningResult] = useState<any>(null)
   const [parcelLink, setParcelLink] = useState('')
+  const [mapCoords, setMapCoords] = useState<{lat:number,lng:number,zoom:number}|null>(null)
+  const [mapAddress, setMapAddress] = useState('')
+  const [mapLoading, setMapLoading] = useState(false)
   const [parcelDocs, setParcelDocs] = useState<{id:string,name:string,type:string,size:string,b64:string,usedInScore:boolean}[]>([])
   const [docScanResults, setDocScanResults] = useState<Record<string,{scanning:boolean,text:string}>>({})
   const [screeningInput, setScreeningInput] = useState({
@@ -1227,6 +1420,26 @@ export default function MDOSApp() {
     setView('dashboard')
   }
 
+  const geocodeAddress = async (address: string) => {
+    if (!address.trim()) return
+    setMapLoading(true)
+    setMapAddress(address)
+    try {
+      const q = encodeURIComponent(address)
+      const res = await fetch(
+        'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + q,
+        {headers: {'User-Agent': 'MDOS-Platform/1.0 (edgar@mdi.build)'}}
+      )
+      const data = await res.json()
+      if (data && data[0]) {
+        setMapCoords({lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), zoom: 18})
+      }
+    } catch (e) {
+      console.error('Geocode failed', e)
+    }
+    setMapLoading(false)
+  }
+
   const goProject = (p: typeof PROJECTS[0]) => {
     setActiveProject(p)
     setProjectTab('overview')
@@ -1234,6 +1447,7 @@ export default function MDOSApp() {
   }
 
   const runScreening = () => {
+    geocodeAddress(screeningInput.address)
     const lot = parseFloat(screeningInput.lot) || 0
     const units = parseInt(screeningInput.units) || 0
     const bmin = parseFloat(screeningInput.bmin) * 1_000_000
@@ -1829,7 +2043,7 @@ export default function MDOSApp() {
     <div style={{display:'flex',flex:1,overflow:'hidden'}}>
       <div style={{width:260,background:'#fff',borderRight:'0.5px solid rgba(0,0,0,0.1)',padding:16,flexShrink:0,overflowY:'auto'}}>
         <FormSection title="Parcel Identification">
-          <Field label="Address or APN"><input value={screeningInput.address} onChange={e=>setScreeningInput(s=>({...s,address:e.target.value}))}/></Field>
+          <Field label="Address or APN"><input value={screeningInput.address} onChange={e=>setScreeningInput(s=>({...s,address:e.target.value}))} onBlur={e=>{ if(e.target.value.length > 8) geocodeAddress(e.target.value) }}/></Field>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
             <Field label="State"><select value={screeningInput.state} onChange={e=>setScreeningInput(s=>({...s,state:e.target.value}))}><option value="TX">Texas</option><option value="FL">Florida</option><option value="UK">UK</option></select></Field>
             <Field label="Market"><select value={screeningInput.market} onChange={e=>setScreeningInput(s=>({...s,market:e.target.value}))}><option value="austin">Austin</option><option value="orlando">Orlando</option><option value="birmingham">Birmingham</option></select></Field>
@@ -1920,6 +2134,7 @@ export default function MDOSApp() {
           </>
         )}
       </div>
+      <MapPanel coords={mapCoords} address={mapAddress} loading={mapLoading} onGeocode={geocodeAddress}/>
       <ParcelDocsPanel
         parcelLink={parcelLink} parcelDocs={parcelDocs}
         docScanResults={docScanResults} setParcelDocs={setParcelDocs}
