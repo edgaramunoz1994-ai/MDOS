@@ -145,7 +145,7 @@ function NewProjectModal({
                   ['Name', form.name||'—'],['Address', form.address||'—'],['State', form.state],
                   ['Goal', form.goal.replace(/_/g,' ')],['Method', form.method],
                   ['Units', form.units||'—'],['Partner', form.partner||'—'],
-                  ['Budget', form.budgetMin&&form.budgetMax?`$${form.budgetMin}M – $${form.budgetMax}M`:'—'],
+                  ['Budget', form.budgetMin&&form.budgetMax?`$${form.budgetMin}M - $${form.budgetMax}M`:'—'],
                 ].map(([l,v])=>(
                   <div key={l} style={{display:'flex',justifyContent:'space-between',fontSize:11,padding:'3px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
                     <span style={{color:'#888'}}>{l}</span><span style={{fontWeight:500,maxWidth:280,textAlign:'right'}}>{v}</span>
@@ -659,16 +659,16 @@ function VertikaalView({screeningResult, screeningInput, onBack}: {screeningResu
     setStep('generating')
     setProgress(0)
     const steps = [
-      [10, 'Parsing parcel boundary from Regrid…'],
-      [22, 'Applying zoning setbacks and height limits…'],
-      [35, 'Generating floor plan from Design Series ' + bimConfig.designSeries + '…'],
-      [48, 'Extruding 3DCP wall geometry…'],
-      [58, 'Placing window and door openings…'],
-      [67, 'Generating roof structure…'],
-      [75, 'Running structural calculations…'],
-      [83, 'Exporting IFC open BIM package…'],
-      [90, 'Generating Revit model…'],
-      [95, 'Compiling cost estimate spreadsheet…'],
+      [10, 'Parsing parcel boundary from Regrid...'],
+      [22, 'Applying zoning setbacks and height limits...'],
+      [35, 'Generating floor plan from Design Series ' + bimConfig.designSeries + '...'],
+      [48, 'Extruding 3DCP wall geometry...'],
+      [58, 'Placing window and door openings...'],
+      [67, 'Generating roof structure...'],
+      [75, 'Running structural calculations...'],
+      [83, 'Exporting IFC open BIM package...'],
+      [90, 'Generating Revit model...'],
+      [95, 'Compiling cost estimate spreadsheet...'],
       [100, 'BIM package ready ✓'],
     ]
     let i = 0
@@ -742,7 +742,7 @@ function VertikaalView({screeningResult, screeningInput, onBack}: {screeningResu
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16}}>
               {[
-                {icon:'📐', title:'Parametric Design Series', desc:'Choose from MDI's Design Series library (A–F) pre-optimized for 3DCP and SCIP'},
+                {icon:'📐', title:'Parametric Design Series', desc:"Choose from MDI's Design Series library (A-F) pre-optimized for 3DCP and SCIP"},
                 {icon:'📦', title:'Multi-format Export', desc:'IFC, Revit, DWG, PDF permit set, and XLSX cost estimate generated simultaneously'},
                 {icon:'🤖', title:'Robotic Code Ready', desc:'STL and G-code export for ICON Titan and RIC Robotics included automatically'},
                 {icon:'💰', title:'5D Cost Estimate', desc:'Live RSMeans-linked cost estimate updates as you change design parameters'},
@@ -857,7 +857,7 @@ function VertikaalView({screeningResult, screeningInput, onBack}: {screeningResu
       {step === 'generating' && (
         <div className="panel" style={{textAlign:'center',padding:'50px 30px'}}>
           <div style={{fontSize:36,marginBottom:16}}>⚙️</div>
-          <div style={{fontWeight:500,fontSize:15,marginBottom:6}}>Generating BIM Package…</div>
+          <div style={{fontWeight:500,fontSize:15,marginBottom:6}}>Generating BIM Package...</div>
           <div style={{fontSize:12,color:'#888',marginBottom:24,minHeight:20}}>{progressLabel}</div>
           <div style={{background:'#e8e8e0',borderRadius:8,height:10,overflow:'hidden',maxWidth:400,margin:'0 auto 12px'}}>
             <div style={{height:'100%',background:'var(--mdi-green)',borderRadius:8,width:`${progress}%`,transition:'width 0.4s ease'}}/>
@@ -1078,7 +1078,7 @@ export default function MDOSApp() {
       <div style={{flex:1,fontSize:15,fontWeight:500}}>{titles[view]}</div>
       <div style={{display:'flex',alignItems:'center',gap:7,background:'#f5f4f0',border:'0.5px solid rgba(0,0,0,0.1)',borderRadius:7,padding:'5px 10px',width:180}}>
         <span style={{color:'#aaa',fontSize:13}}>⌕</span>
-        <input type="text" placeholder="Search projects…" style={{border:'none',background:'transparent',padding:0,width:'100%'}}/>
+        <input type="text" placeholder="Search projects..." style={{border:'none',background:'transparent',padding:0,width:'100%'}}/>
       </div>
       <div style={{position:'relative',cursor:'pointer',padding:5,borderRadius:7,border:'0.5px solid rgba(0,0,0,0.1)',background:'#f5f4f0'}} onClick={()=>setView('notifications')}>
         <span style={{fontSize:18}}>🔔</span>
@@ -1376,12 +1376,12 @@ export default function MDOSApp() {
           <div style={{fontSize:11,color:'#888',marginBottom:12}}>Report for: {r.address} · Goal: Residential SFH · Generated {r.generated}</div>
           <div style={{background:'#E1F5EE',borderRadius:8,padding:'10px 12px',borderLeft:'3px solid #1D9E75',marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:500,color:'#085041',marginBottom:4}}>🏗 3DCP-Specific Price Projections</div>
-            <div style={{fontSize:11,color:'#0F6E56',lineHeight:1.5}}>Projected unit values of ${(r.projectedUnitMin/1000).toFixed(0)}K–${(r.projectedUnitMax/1000).toFixed(0)}K for 3D-printed homes in this submarket. REAI projects a {r.pricePremiumPct}% price premium over traditional construction — directly supports MDI project feasibility and investor narrative. 5-year appreciation outlook: +{r.appreciation5yr}% driven by supply constraint and buyer demographics.</div>
+            <div style={{fontSize:11,color:'#0F6E56',lineHeight:1.5}}>Projected unit values of ${(r.projectedUnitMin/1000).toFixed(0)}K-${(r.projectedUnitMax/1000).toFixed(0)}K for 3D-printed homes in this submarket. REAI projects a {r.pricePremiumPct}% price premium over traditional construction — directly supports MDI project feasibility and investor narrative. 5-year appreciation outlook: +{r.appreciation5yr}% driven by supply constraint and buyer demographics.</div>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12}}>
             {[
               {l:'Median sale price',v:`$${r.medianSalePricePerSqft}/sqft`,s:`Zillow HVI: +${r.appreciationYoy}% YoY`},
-              {l:'Projected unit range',v:`$${(r.projectedUnitMin/1000).toFixed(0)}K–$${(r.projectedUnitMax/1000).toFixed(0)}K`,s:'3DCP new build comps'},
+              {l:'Projected unit range',v:`$${(r.projectedUnitMin/1000).toFixed(0)}K-$${(r.projectedUnitMax/1000).toFixed(0)}K`,s:'3DCP new build comps'},
               {l:'Avg monthly rent',v:`$${r.avgMonthlyRent.toLocaleString()}`,s:`+${r.rentGrowthYoy}% YoY`},
               {l:'Crime index (CAP)',v:`${r.crimeIndexCap} / 100`,s:'Below MDI threshold (80)'},
               {l:'School rating (Niche)',v:r.schoolRating,s:'Above MDI threshold (C)'},
@@ -1576,13 +1576,13 @@ export default function MDOSApp() {
               <div style={{display:'flex',gap:5}}>
                 {(['admin','team','partner','investor'] as Role[]).map(r=>{
                   const has = MODULE_ACCESS[r][mi]
-                  return <div key={r} style={{width:28,height:18,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,background:has?'#EAF3DE':'#f5f4f0',color:has?'#3B6D11':'#ccc'}}>{has?'✓':'–'}</div>
+                  return <div key={r} style={{width:28,height:18,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,background:has?'#EAF3DE':'#f5f4f0',color:has?'#3B6D11':'#ccc'}}>{has?'✓':'-'}</div>
                 })}
               </div>
             </div>
           ))}
           <div style={{marginTop:10,background:'#f5f4f0',borderRadius:8,padding:'8px 10px',fontSize:11,color:'#666'}}>
-            {role==='admin'?'Full access to all 6 modules plus system configuration.':role==='team'?'Modules 01–05 on assigned projects. No partner management.':role==='partner'?'Project-scoped: M01, M02, M04, M05 for own project only.':'Read-only: M01 summary and M05 progress view only.'}
+            {role==='admin'?'Full access to all 6 modules plus system configuration.':role==='team'?'Modules 01-05 on assigned projects. No partner management.':role==='partner'?'Project-scoped: M01, M02, M04, M05 for own project only.':'Read-only: M01 summary and M05 progress view only.'}
           </div>
         </div>
       </div>
