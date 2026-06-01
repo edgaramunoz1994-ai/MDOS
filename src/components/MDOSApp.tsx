@@ -738,7 +738,7 @@ function VertikaalView({screeningResult, screeningInput, onBack}: {screeningResu
           <div className="panel">
             <div style={{fontWeight:500,fontSize:13,marginBottom:4}}>What is VERTIKAAL?</div>
             <div style={{fontSize:12,color:'#555',lineHeight:1.7,marginBottom:14}}>
-              VERTIKAAL is MDI's proprietary BIM automation engine. It takes the feasibility-cleared parcel data from M01 and generates a complete 5D BIM package — geometry, structure, MEP routing, cost estimate, and permit-ready drawings — in minutes rather than weeks.
+              VERTIKAAL is a proprietary BIM automation engine licensed by MDI. It takes the feasibility-cleared parcel data from M01 and generates a complete 5D BIM package — geometry, structure, MEP routing, cost estimate, and permit-ready drawings — in minutes rather than weeks.
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16}}>
               {[
