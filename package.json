@@ -11,12 +11,14 @@
     "next": "15.3.8",
     "react": "^19",
     "react-dom": "^19",
-    "mammoth": "^1.8.0"
+    "mammoth": "^1.8.0",
+    "pdf-parse": "^1.1.1"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/pdf-parse": "^1.1.4",
     "typescript": "^5",
     "tailwindcss": "^3.4.1",
     "postcss": "^8",
