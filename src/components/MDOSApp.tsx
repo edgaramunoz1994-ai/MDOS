@@ -268,13 +268,7 @@ function ScheduleTab({p}: {p: any}) {
   const phases = Array.from(new Set(tasks.map((t:any) => t.phase)))
   const totalDays = tasks.length > 0 ? Math.max(...tasks.map((t:any) => t.startOffset + t.days)) : 0
 
-  if (tasks.length === 0) return (
-    <div className="panel" style={{textAlign:'center',padding:40}}>
-      <div style={{fontSize:32,marginBottom:12}}>📅</div>
-      <div style={{fontWeight:500,marginBottom:6}}>No Schedule Uploaded</div>
-      <div style={{fontSize:12,color:'#888'}}>Upload a master schedule Excel file to generate the critical path and Gantt chart.</div>
-    </div>
-  )
+  if (tasks.length === 0) return <ScheduleBuilder projectName={p.name}/>
 
   return (
     <div>
@@ -351,7 +345,9 @@ function ScheduleTab({p}: {p: any}) {
       ) : (
         /* ── Gantt Chart View ── */
         <div className="panel" style={{overflowX:'auto',padding:'14px 0'}}>
-          <div style={{minWidth: Math.max(900, totalDays * 4 + 240)}}>
+          <div style={{minWidth: Math.max(900, totalDays * 4 + 240), position:'relative'}}>
+            {/* Today line — scoped inside the chart container */}
+            <div style={{position:'absolute',left:`${240 + 108*4}px`,top:0,bottom:0,width:2,background:'rgba(173,56,21,0.5)',pointerEvents:'none',zIndex:5}}/>
             {/* Timeline header */}
             <div style={{display:'flex',borderBottom:'0.5px solid rgba(0,0,0,0.1)',paddingBottom:6,marginBottom:4,paddingLeft:240}}>
               {Array.from({length:Math.ceil(totalDays/30)},(_,i) => (
@@ -402,11 +398,239 @@ function ScheduleTab({p}: {p: any}) {
                 </React.Fragment>
               )
             })}
-            {/* Today marker */}
-            <div style={{position:'absolute',left:`${240 + 108*4}px`,top:0,bottom:0,width:2,background:'rgba(173,56,21,0.4)',pointerEvents:'none',zIndex:10}}/>
+
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+
+// ── Schedule Builder Form — for projects without a pre-loaded schedule ─────────
+const PHASE_OPTIONS = ['Pre-Construction','Site Work','Foundation','Framing','Mechanical/Electrical/Plumbing','Envelope','Interior','Final & Closeout','Custom']
+const STATUS_OPTIONS = ['Critical','Most Critical','Scheduled w/ Sub','Inspection','Complete','Goal','Unassigned']
+const EMPTY_TASK = { phase:'Pre-Construction', task:'', status:'Critical', progress:0, startOffset:0, days:1, critical:true }
+
+function ScheduleBuilder({projectName}: {projectName:string}) {
+  const [tasks, setTasks] = React.useState<any[]>([
+    { phase:'Pre-Construction', task:'Site Survey', status:'Critical', progress:0, startOffset:0, days:2, critical:true },
+    { phase:'Pre-Construction', task:'Permit Application', status:'Critical', progress:0, startOffset:2, days:30, critical:true },
+    { phase:'Foundation', task:'Excavation', status:'Scheduled w/ Sub', progress:0, startOffset:32, days:3, critical:false },
+    { phase:'Foundation', task:'Slab Pour', status:'Critical', progress:0, startOffset:35, days:1, critical:true },
+  ])
+  const [editIdx, setEditIdx] = React.useState<number|null>(null)
+  const [draft, setDraft] = React.useState<any>({...EMPTY_TASK})
+  const [view, setView] = React.useState<'form'|'critical'|'gantt'>('form')
+  const [addingPhase, setAddingPhase] = React.useState('Pre-Construction')
+
+  const phases = Array.from(new Set(tasks.map(t => t.phase)))
+  const totalDays = tasks.length > 0 ? Math.max(...tasks.map(t => t.startOffset + t.days)) : 30
+
+  const saveTask = () => {
+    if (!draft.task.trim()) return
+    if (editIdx !== null) {
+      setTasks(prev => prev.map((t,i) => i===editIdx ? {...draft} : t))
+      setEditIdx(null)
+    } else {
+      setTasks(prev => [...prev, {...draft}])
+    }
+    setDraft({...EMPTY_TASK, phase: draft.phase})
+  }
+
+  const deleteTask = (idx:number) => setTasks(prev => prev.filter((_,i) => i!==idx))
+  const editTask = (idx:number) => { setDraft({...tasks[idx]}); setEditIdx(idx) }
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="panel" style={{marginBottom:12,padding:'12px 16px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontWeight:500,fontSize:13}}>{projectName} — Construction Schedule</div>
+            <div style={{fontSize:11,color:'#888',marginTop:2}}>{tasks.length} tasks · {totalDays} day timeline</div>
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            {(['form','critical','gantt'] as const).map(v=>(
+              <button key={v} onClick={()=>setView(v)}
+                style={{fontSize:11,padding:'5px 12px',borderRadius:7,border:`0.5px solid ${view===v?'var(--mdi-green)':'rgba(0,0,0,0.15)'}`,
+                  background:view===v?'var(--mdi-green)':'#fff',color:view===v?'#fff':'#555',cursor:'pointer'}}>
+                {v==='form'?'✏️ Build':v==='critical'?'📋 Critical Path':'📊 Gantt'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {view === 'form' && (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          {/* Task entry form */}
+          <div className="panel">
+            <div style={{fontWeight:500,fontSize:12,marginBottom:12}}>{editIdx!==null?'✏️ Edit Task':'➕ Add Task'}</div>
+            <div style={{marginBottom:8}}>
+              <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>Phase</label>
+              <select value={draft.phase} onChange={e=>setDraft((d:any)=>({...d,phase:e.target.value}))} style={{width:'100%',fontSize:12,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}>
+                {PHASE_OPTIONS.map(p=><option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:8}}>
+              <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>Task Name *</label>
+              <input value={draft.task} onChange={e=>setDraft((d:any)=>({...d,task:e.target.value}))} placeholder="e.g. Slab Pour" style={{width:'100%',fontSize:12,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}/>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+              <div>
+                <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>Start Day</label>
+                <input type="number" min={0} value={draft.startOffset} onChange={e=>setDraft((d:any)=>({...d,startOffset:parseInt(e.target.value)||0}))} style={{width:'100%',fontSize:12,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}/>
+              </div>
+              <div>
+                <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>Duration (days)</label>
+                <input type="number" min={1} value={draft.days} onChange={e=>setDraft((d:any)=>({...d,days:parseInt(e.target.value)||1}))} style={{width:'100%',fontSize:12,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}/>
+              </div>
+            </div>
+            <div style={{marginBottom:8}}>
+              <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>Status</label>
+              <select value={draft.status} onChange={e=>setDraft((d:any)=>({...d,status:e.target.value,critical:e.target.value.toLowerCase().includes('critical')}))}>
+                {STATUS_OPTIONS.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>Progress: {draft.progress}%</label>
+              <input type="range" min={0} max={100} step={10} value={draft.progress} onChange={e=>setDraft((d:any)=>({...d,progress:parseInt(e.target.value)}))} style={{width:'100%'}}/>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn btn-primary" style={{flex:1,justifyContent:'center'}} onClick={saveTask} disabled={!draft.task.trim()}>
+                {editIdx!==null?'Update Task':'Add Task'}
+              </button>
+              {editIdx!==null && <button className="btn" onClick={()=>{setEditIdx(null);setDraft({...EMPTY_TASK})}}>Cancel</button>}
+            </div>
+          </div>
+
+          {/* Task list */}
+          <div className="panel">
+            <div style={{fontWeight:500,fontSize:12,marginBottom:12}}>📋 Tasks ({tasks.length})</div>
+            {tasks.length === 0 && <div style={{fontSize:12,color:'#aaa',textAlign:'center',padding:20}}>No tasks yet — add your first task</div>}
+            <div style={{maxHeight:380,overflowY:'auto'}}>
+              {phases.map(phase => (
+                <div key={phase} style={{marginBottom:10}}>
+                  <div style={{fontSize:10,letterSpacing:'0.08em',textTransform:'uppercase',color:'#fff',background:PHASE_COLORS[phase]||'#555',padding:'3px 8px',borderRadius:5,marginBottom:4,display:'inline-block'}}>{phase}</div>
+                  {tasks.filter(t=>t.phase===phase).map((t,_i) => {
+                    const globalIdx = tasks.indexOf(t)
+                    const sc = STATUS_COLORS[t.status]||STATUS_COLORS['Unassigned']
+                    return (
+                      <div key={globalIdx} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',background:'#f5f4f0',borderRadius:7,marginBottom:4}}>
+                        {t.critical && t.progress<100 && <span style={{fontSize:10,color:'#E24B4A',flexShrink:0}}>●</span>}
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:12,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.task}</div>
+                          <div style={{fontSize:10,color:'#888'}}>Day {t.startOffset} · {t.days}d · <span style={{padding:'1px 5px',borderRadius:5,background:sc.bg,color:sc.text}}>{t.status}</span></div>
+                        </div>
+                        <button onClick={()=>editTask(globalIdx)} style={{background:'transparent',border:'none',cursor:'pointer',fontSize:13,color:'#888',padding:2}}>✏️</button>
+                        <button onClick={()=>deleteTask(globalIdx)} style={{background:'transparent',border:'none',cursor:'pointer',fontSize:13,color:'#ccc',padding:2}}>✕</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+            {tasks.length > 0 && (
+              <button className="btn btn-primary" style={{width:'100%',marginTop:10,justifyContent:'center'}} onClick={()=>setView('critical')}>
+                Generate Schedule →
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(view === 'critical' || view === 'gantt') && (
+        <BuiltScheduleView tasks={tasks} view={view} totalDays={totalDays} phases={phases}/>
+      )}
+    </div>
+  )
+}
+
+function BuiltScheduleView({tasks, view, totalDays, phases}: {tasks:any[], view:'critical'|'gantt', totalDays:number, phases:string[]}) {
+  return view === 'critical' ? (
+    <div>
+      {phases.map(phase => {
+        const phaseTasks = tasks.filter(t => t.phase === phase)
+        const phaseColor = PHASE_COLORS[phase] || '#555'
+        return (
+          <div key={phase} style={{marginBottom:10}}>
+            <div style={{background:phaseColor,color:'#fff',padding:'6px 14px',borderRadius:'8px 8px 0 0',fontSize:11,fontWeight:500,letterSpacing:'0.06em',textTransform:'uppercase',display:'flex',justifyContent:'space-between'}}>
+              <span>{phase}</span>
+              <span style={{fontSize:10,opacity:0.7}}>{phaseTasks.filter(t=>t.progress===100).length}/{phaseTasks.length} complete</span>
+            </div>
+            <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.1)',borderTop:'none',borderRadius:'0 0 8px 8px',overflow:'hidden'}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 90px 60px 80px',padding:'5px 12px',background:'#f5f4f0',fontSize:10,color:'#888',fontWeight:500,borderBottom:'0.5px solid rgba(0,0,0,0.08)'}}>
+                <span>Task</span><span>Status</span><span style={{textAlign:'center'}}>Progress</span><span style={{textAlign:'right'}}>Duration</span>
+              </div>
+              {phaseTasks.map((t,i) => {
+                const sc = STATUS_COLORS[t.status]||STATUS_COLORS['Unassigned']
+                return (
+                  <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 90px 60px 80px',padding:'7px 12px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',alignItems:'center',background:t.critical&&t.progress<100?'rgba(252,235,235,0.3)':'#fff'}}>
+                    <div style={{fontSize:12,display:'flex',alignItems:'center',gap:6}}>
+                      {t.critical&&t.progress<100&&<span style={{fontSize:10}}>🔴</span>}
+                      {t.status==='Inspection'&&<span style={{fontSize:10}}>🔍</span>}
+                      {t.status==='Goal'&&<span style={{fontSize:10}}>🏁</span>}
+                      {t.status==='Complete'&&<span style={{fontSize:10}}>✅</span>}
+                      {t.task}
+                    </div>
+                    <span style={{fontSize:10,padding:'2px 6px',borderRadius:8,background:sc.bg,color:sc.text,whiteSpace:'nowrap'}}>{t.status}</span>
+                    <div style={{textAlign:'center'}}>
+                      <div style={{background:'#e8e8e0',borderRadius:4,height:6,overflow:'hidden'}}>
+                        <div style={{height:'100%',borderRadius:4,background:t.progress===100?'#3B6D11':t.critical?'#E24B4A':'var(--mdi-gold)',width:`${t.progress}%`}}/>
+                      </div>
+                      <div style={{fontSize:9,color:'#aaa',marginTop:2}}>{t.progress}%</div>
+                    </div>
+                    <div style={{textAlign:'right',fontSize:11,color:'#555'}}>{t.days}d</div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  ) : (
+    <div className="panel" style={{overflowX:'auto',padding:'14px 0'}}>
+      <div style={{minWidth:Math.max(900,totalDays*4+240),position:'relative'}}>
+        {/* Today line scoped inside chart */}
+        <div style={{position:'absolute',left:`${240}px`,top:32,bottom:0,width:2,background:'rgba(173,56,21,0.5)',pointerEvents:'none',zIndex:5}}/>
+        <div style={{display:'flex',borderBottom:'0.5px solid rgba(0,0,0,0.1)',paddingBottom:6,marginBottom:4,paddingLeft:240}}>
+          {Array.from({length:Math.ceil(totalDays/30)},(_,i)=>(
+            <div key={i} style={{width:'120px',fontSize:10,color:'#888',flexShrink:0,textAlign:'center',borderRight:'0.5px solid rgba(0,0,0,0.06)'}}>Month {i+1}</div>
+          ))}
+        </div>
+        {phases.map(phase=>{
+          const phaseTasks = tasks.filter(t=>t.phase===phase)
+          const phaseColor = PHASE_COLORS[phase]||'#555'
+          return (
+            <React.Fragment key={phase}>
+              <div style={{display:'flex',alignItems:'center',background:phaseColor,padding:'4px 12px',marginBottom:2}}>
+                <div style={{width:228,fontSize:10,fontWeight:500,color:'#fff',letterSpacing:'0.06em',textTransform:'uppercase',flexShrink:0}}>{phase}</div>
+              </div>
+              {phaseTasks.map((t,i)=>{
+                const barLeft = t.startOffset*4
+                const barWidth = Math.max(t.days*4,8)
+                return (
+                  <div key={i} style={{display:'flex',alignItems:'center',padding:'2px 0',borderBottom:'0.5px solid rgba(0,0,0,0.04)',minHeight:28}}>
+                    <div style={{width:240,fontSize:11,flexShrink:0,paddingLeft:16,paddingRight:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}}>
+                      {t.critical&&t.progress<100&&<span style={{fontSize:9,color:'#E24B4A',flexShrink:0}}>●</span>}
+                      {t.task}
+                    </div>
+                    <div style={{flex:1,position:'relative',height:20}}>
+                      <div style={{position:'absolute',left:`${barLeft}px`,width:`${barWidth}px`,height:16,top:2,borderRadius:4,
+                        background:t.status==='Complete'?'#3B6D11':t.status==='Inspection'?'#534AB7':t.status==='Goal'?'#085041':t.critical?'#C9A227':'#6BAED6',
+                        display:'flex',alignItems:'center',paddingLeft:4,overflow:'hidden'}}>
+                        {barWidth>30&&<span style={{fontSize:9,color:'#fff',whiteSpace:'nowrap',zIndex:1,position:'relative'}}>{t.days}d</span>}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </React.Fragment>
+          )
+        })}
+      </div>
     </div>
   )
 }
