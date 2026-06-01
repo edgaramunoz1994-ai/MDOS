@@ -8,11 +8,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No transcript provided' }, { status: 400 })
     }
 
+    const suffix = ' [transcript truncated]'
     const truncated = transcript.length > 12000
-      ? transcript.slice(0, 12000) + "
-
-[transcript truncated]"
+      ? transcript.slice(0, 12000) + suffix
       : transcript
+
+    const systemPrompt = [
+      'You are a construction project assistant for Moderne Development Inc (MDI).',
+      'Summarize the following meeting transcript into a concise project log entry.',
+      'Format: 2-3 sentence overview, Key decisions (max 4 bullets),',
+      'Action items with owner (max 4 bullets), Blockers or risks.',
+      'Under 250 words. No preamble. Start directly with the summary.',
+    ].join(' ')
+
+    const userMsg = 'Project: ' + (projectId || 'unknown') + ' --- Transcript: ' + truncated
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -24,22 +33,15 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
-        system: "You are a construction project assistant for Moderne Development, Inc. (MDI), a technology company building AI-powered construction workflows using 3D concrete printing (3DCP) and BIM automation. Summarize the following meeting transcript or AI notetaker output into a concise project communication log entry. Format it as: a 2-3 sentence overview of what was discussed, Key decisions made (bullet points max 4), Action items and next steps (bullet points with owner if mentioned max 4), Any blockers or risks flagged. Keep it factual, professional, and under 250 words. Do not add any preamble, start directly with the summary.",
-        messages: [{
-          role: 'user',
-          content: "Project ID: " + (projectId || 'unknown') + "
-
-Meeting transcript:
-
-" + truncated
-        }]
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMsg }]
       })
     })
 
     if (!response.ok) {
       const err = await response.json()
       return NextResponse.json(
-        { error: err?.error?.message || ('Anthropic API error ' + response.status) },
+        { error: err?.error?.message || ('API error ' + response.status) },
         { status: response.status }
       )
     }
