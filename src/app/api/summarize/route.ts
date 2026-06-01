@@ -9,9 +9,9 @@ export async function POST(req: NextRequest) {
     }
 
     const truncated = transcript.length > 12000
-      ? transcript.slice(0, 12000) + '
+      ? transcript.slice(0, 12000) + "
 
-[transcript truncated]'
+[transcript truncated]"
       : transcript
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -24,22 +24,14 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
-        system: `You are a construction project assistant for Moderne Development, Inc. (MDI), a technology company building AI-powered construction workflows using 3D concrete printing (3DCP) and BIM automation.
-
-Summarize the following meeting transcript or AI notetaker output into a concise project communication log entry. Format it as:
-- 2-3 sentence overview of what was discussed
-- Key decisions made (bullet points, max 4)
-- Action items / next steps (bullet points with owner if mentioned, max 4)
-- Any blockers or risks flagged
-
-Keep it factual, professional, and under 250 words. Do not add any preamble — start directly with the summary.`,
+        system: "You are a construction project assistant for Moderne Development, Inc. (MDI), a technology company building AI-powered construction workflows using 3D concrete printing (3DCP) and BIM automation. Summarize the following meeting transcript or AI notetaker output into a concise project communication log entry. Format it as: a 2-3 sentence overview of what was discussed, Key decisions made (bullet points max 4), Action items and next steps (bullet points with owner if mentioned max 4), Any blockers or risks flagged. Keep it factual, professional, and under 250 words. Do not add any preamble, start directly with the summary.",
         messages: [{
           role: 'user',
-          content: `Project ID: ${projectId || 'unknown'}
+          content: "Project ID: " + (projectId || 'unknown') + "
 
 Meeting transcript:
 
-${truncated}`
+" + truncated
         }]
       })
     })
@@ -47,7 +39,7 @@ ${truncated}`
     if (!response.ok) {
       const err = await response.json()
       return NextResponse.json(
-        { error: err?.error?.message || 'Anthropic API error ' + response.status },
+        { error: err?.error?.message || ('Anthropic API error ' + response.status) },
         { status: response.status }
       )
     }
