@@ -904,7 +904,7 @@ function VertikaalView({screeningResult, screeningInput, onBack}: {screeningResu
                   {label:'STL (printable geometry)', file:`DS${bimConfig.designSeries}_walls_v1.stl`, size:'18.4 MB', color:'#f0f0ec', tc:'#555'},
                 ].map(f=>(
                   <div key={f.label} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
-                    <span style={{fontSize:10,padding:'2px 6px',borderRadius:5,background:f.color,color:f.tc,flexShrink:0,fontSize:10}}>{f.label.split(' ')[0]}</span>
+                    <span style={{fontSize:10,padding:'2px 6px',borderRadius:5,background:f.color,color:f.tc,flexShrink:0}}>{f.label.split(' ')[0]}</span>
                     <span style={{fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.file}</span>
                     <span style={{fontSize:10,color:'#aaa'}}>{f.size}</span>
                     <button className="btn" style={{padding:'3px 8px',fontSize:11}}>↓</button>
