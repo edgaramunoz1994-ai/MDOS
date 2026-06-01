@@ -942,6 +942,11 @@ export default function MDOSApp() {
   const [role, setRole] = useState<Role>('admin')
   const [view, setView] = useState<View>('dashboard')
   const [activeProject, setActiveProject] = useState(PROJECTS[0])
+  const [commsMap, setCommsMap] = useState<Record<string,{author:string,date:string,body:string}[]>>(
+    () => Object.fromEntries(PROJECTS.map(p => [p.id, p.comms]))
+  )
+  const [newNote, setNewNote] = useState('')
+  const [noteAuthor, setNoteAuthor] = useState('')
   const [projectTab, setProjectTab] = useState<'overview'|'bim'|'refax'|'twin'|'schedule'>('overview')
   const [notifToggles, setNotifToggles] = useState<Record<string,{teams:boolean,email:boolean}>>(() =>
     Object.fromEntries(NOTIF_EVENTS.map(e => [e.key, {teams:e.teams, email:e.email}]))
@@ -1251,41 +1256,87 @@ export default function MDOSApp() {
     </div>
   )
 
-  const OverviewTab = ({p}:{p:typeof PROJECTS[0]}) => (
-    <div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
-        <div className="panel" style={{marginBottom:0}}>
-          <div style={{fontWeight:500,fontSize:12,marginBottom:10}}>⏱ Timeline</div>
-          {[['Feasibility cleared',p.startDate],['BIM generated',p.bimDate||'—'],['Print started',p.printDate||'—'],['Est. completion',p.estCompletion]].map(([l,v])=>(
-            <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)',fontSize:11}}>
-              <span style={{color:'#888'}}>{l}</span><span style={{fontWeight:500}}>{v}</span>
-            </div>
-          ))}
-        </div>
-        <div className="panel" style={{marginBottom:0}}>
-          <div style={{fontWeight:500,fontSize:12,marginBottom:10}}>👥 Team</div>
-          {[['MDI Lead','Edgar Munoz'],['CTO','Paul Cejas'],['GC / Partner',p.partner],['BIM (VERTIKAAL)','R. Mechielsen']].map(([l,v])=>(
-            <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)',fontSize:11}}>
-              <span style={{color:'#888'}}>{l}</span><span style={{fontWeight:500}}>{v}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="panel">
-        <div style={{fontWeight:500,fontSize:12,marginBottom:10}}>💬 Communication Log</div>
-        {p.comms.length === 0 && <div style={{fontSize:12,color:'#aaa',textAlign:'center',padding:'20px 0'}}>No communications yet</div>}
-        {p.comms.map((c,i)=>(
-          <div key={i} style={{background:'#f5f4f0',borderRadius:8,padding:'9px 10px',marginBottom:8}}>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-              <span style={{fontWeight:500,fontSize:11}}>{c.author}</span>
-              <span style={{fontSize:10,color:'#888'}}>{c.date}</span>
-            </div>
-            <div style={{fontSize:11,color:'#555',lineHeight:1.5}}>{c.body}</div>
+  const OverviewTab = ({p}:{p:typeof PROJECTS[0]}) => {
+    const comms = commsMap[p.id] || p.comms
+    const [draft, setDraft] = useState('')
+    const [draftAuthor, setDraftAuthor] = useState('')
+    const [expanded, setExpanded] = useState(false)
+    return (
+      <div style={{display:'flex',flexDirection:'column',gap:12}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div className="panel" style={{marginBottom:0}}>
+            <div style={{fontWeight:500,fontSize:12,marginBottom:10}}>⏱ Timeline</div>
+            {[['Feasibility cleared',p.startDate],['BIM generated',p.bimDate||'—'],['Print started',p.printDate||'—'],['Est. completion',p.estCompletion]].map(([l,v])=>(
+              <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)',fontSize:11}}>
+                <span style={{color:'#888'}}>{l}</span><span style={{fontWeight:500}}>{v}</span>
+              </div>
+            ))}
           </div>
-        ))}
+          <div className="panel" style={{marginBottom:0}}>
+            <div style={{fontWeight:500,fontSize:12,marginBottom:10}}>👥 Team</div>
+            {[['MDI Lead','Edgar Munoz'],['CTO','Paul Cejas'],['GC / Partner',p.partner],['BIM (VERTIKAAL)','R. Mechielsen']].map(([l,v])=>(
+              <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)',fontSize:11}}>
+                <span style={{color:'#888'}}>{l}</span><span style={{fontWeight:500}}>{v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="panel">
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <div style={{fontWeight:500,fontSize:12}}>
+              💬 Communication Log
+              <span style={{fontSize:11,color:'#aaa',fontWeight:400,marginLeft:6}}>({comms.length})</span>
+            </div>
+            <button className="btn" onClick={()=>setExpanded(e=>!e)} style={{fontSize:11}}>
+              {expanded ? '✕ Cancel' : '+ Add Note'}
+            </button>
+          </div>
+          {expanded && (
+            <div style={{background:'#f0f7f4',border:'0.5px solid #b8ddd0',borderRadius:8,padding:12,marginBottom:12}}>
+              <div style={{marginBottom:8}}>
+                <label style={{display:'block',fontSize:11,color:'#555',marginBottom:3,fontWeight:500}}>Your name</label>
+                <input value={draftAuthor} onChange={e=>setDraftAuthor(e.target.value)}
+                  placeholder={user.name}
+                  style={{width:'100%',fontSize:12,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7,background:'#fff'}}/>
+              </div>
+              <div style={{marginBottom:10}}>
+                <label style={{display:'block',fontSize:11,color:'#555',marginBottom:3,fontWeight:500}}>Note *</label>
+                <textarea value={draft} onChange={e=>setDraft(e.target.value)}
+                  placeholder="Add a project note, update, or action item..."
+                  style={{width:'100%',height:80,resize:'vertical',fontSize:12,padding:'6px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7,background:'#fff',fontFamily:'inherit'}}/>
+              </div>
+              <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+                <button className="btn" style={{fontSize:11}} onClick={()=>{setExpanded(false);setDraft('');setDraftAuthor('')}}>Cancel</button>
+                <button className="btn btn-primary" style={{fontSize:11}} disabled={!draft.trim()}
+                  onClick={()=>{addComm(p.id,draft,draftAuthor);setExpanded(false);setDraftAuthor('')}}>
+                  Post Note
+                </button>
+              </div>
+            </div>
+          )}
+          {comms.length===0 && !expanded && (
+            <div style={{fontSize:12,color:'#aaa',textAlign:'center',padding:'20px 0'}}>No communications yet — add the first note</div>
+          )}
+          {comms.map((c:any,i:number)=>(
+            <div key={i} style={{background:'#f5f4f0',borderRadius:8,padding:'9px 10px',marginBottom:8,
+              borderLeft:i===0&&(commsMap[p.id]||[]).length>(p.comms||[]).length?'3px solid var(--mdi-gold)':'3px solid transparent'}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:4,alignItems:'center'}}>
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <div style={{width:20,height:20,borderRadius:'50%',background:'var(--mdi-green)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:500,flexShrink:0}}>
+                    {c.author.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}
+                  </div>
+                  <span style={{fontWeight:500,fontSize:11}}>{c.author}</span>
+                </div>
+                <span style={{fontSize:10,color:'#aaa'}}>{c.date}</span>
+              </div>
+              <div style={{fontSize:11,color:'#555',lineHeight:1.5,paddingLeft:26}}>{c.body}</div>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
+
 
   const BimTab = ({p}:{p:typeof PROJECTS[0]}) => (
     <div>
@@ -1683,6 +1734,20 @@ export default function MDOSApp() {
     if (!confirm('Delete this project? This cannot be undone.')) return
     setProjects(prev => prev.filter(p => p.id !== id))
     if (activeProject?.id === id) setView('projects')
+  }
+
+  const addComm = (projectId: string, body: string, author: string) => {
+    if (!body.trim()) return
+    const entry = {
+      author: author.trim() || user.name,
+      date: new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}),
+      body: body.trim(),
+    }
+    setCommsMap(prev => ({
+      ...prev,
+      [projectId]: [entry, ...(prev[projectId] || [])],
+    }))
+    setNewNote('')
   }
 
   // ── App shell  // ── App shell ─────────────────────────────────────────────────────────────────
