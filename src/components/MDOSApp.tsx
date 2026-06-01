@@ -1151,6 +1151,11 @@ function ParcelDocsPanel({
 
 
 export default function MDOSApp() {
+  const [loggedIn, setLoggedIn] = useState(false)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPass, setLoginPass] = useState('')
+  const [loginError, setLoginError] = useState('')
+  const [loginLoading, setLoginLoading] = useState(false)
   const [role, setRole] = useState<Role>('admin')
   const [view, setView] = useState<View>('dashboard')
   const [activeProject, setActiveProject] = useState(PROJECTS[0])
@@ -1187,6 +1192,39 @@ export default function MDOSApp() {
     setRole(r)
     if (!ROLE_NAV[r].includes(view)) setView('dashboard')
     setScreeningResult(null)
+  }
+
+  const DEMO_CREDENTIALS = [
+    {email:'edgar@mdi.build',    pass:'mdi2024!',    role:'admin'   as Role, name:'Edgar Munoz', initials:'EM'},
+    {email:'paul@mdi.build',     pass:'mdi2024!',    role:'team'    as Role, name:'Paul Cejas',  initials:'PC'},
+    {email:'daniel@modstone.com',pass:'modstone24!', role:'partner' as Role, name:'Daniel Brown',initials:'DB'},
+    {email:'richard@wharton.edu',pass:'investor24!', role:'investor'as Role, name:'Richard B.',  initials:'RB'},
+  ]
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoginLoading(true)
+    setLoginError('')
+    setTimeout(() => {
+      const match = DEMO_CREDENTIALS.find(c => c.email===loginEmail.trim().toLowerCase() && c.pass===loginPass)
+      if (match) {
+        setRole(match.role)
+        setLoggedIn(true)
+        setView('dashboard')
+      } else {
+        setLoginError('Invalid email or password. Check credentials below.')
+      }
+      setLoginLoading(false)
+    }, 600)
+  }
+
+  const handleLogout = () => {
+    setLoggedIn(false)
+    setLoginEmail('')
+    setLoginPass('')
+    setLoginError('')
+    setRole('admin')
+    setView('dashboard')
   }
 
   const goProject = (p: typeof PROJECTS[0]) => {
@@ -1249,16 +1287,18 @@ export default function MDOSApp() {
         <div style={{fontSize:16,fontWeight:500,color:'#fff'}}>MD<span style={{color:'var(--mdi-gold)'}}>OS</span></div>
         <div style={{fontSize:10,letterSpacing:'0.12em',color:'rgba(255,255,255,0.4)',textTransform:'uppercase',marginTop:2}}>Moderne Development, Inc.</div>
       </div>
-      <div style={{padding:'10px 12px',borderBottom:'0.5px solid rgba(255,255,255,0.1)'}}>
-        <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:4}}>Viewing as</div>
-        <select value={role} onChange={e=>switchRole(e.target.value as Role)}
-          style={{width:'100%',background:'rgba(255,255,255,0.08)',border:'0.5px solid rgba(255,255,255,0.15)',color:'#fff',borderRadius:7,padding:'5px 8px',fontSize:12}}>
-          <option value="admin">MDI Admin</option>
-          <option value="team">MDI Team Member</option>
-          <option value="partner">Alpha JV Partner</option>
-          <option value="investor">Investor / Observer</option>
-        </select>
-      </div>
+      {role==='admin' && (
+        <div style={{padding:'10px 12px',borderBottom:'0.5px solid rgba(255,255,255,0.1)'}}>
+          <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:4}}>View as role</div>
+          <select value={role} onChange={e=>switchRole(e.target.value as Role)}
+            style={{width:'100%',background:'rgba(255,255,255,0.08)',border:'0.5px solid rgba(255,255,255,0.15)',color:'#fff',borderRadius:7,padding:'5px 8px',fontSize:12}}>
+            <option value="admin">MDI Admin</option>
+            <option value="team">MDI Team Member</option>
+            <option value="partner">Alpha JV Partner</option>
+            <option value="investor">Investor / Observer</option>
+          </select>
+        </div>
+      )}
       <div style={{flex:1,padding:'10px 0'}}>
         {nav.includes('dashboard') && <NavItem icon="⊞" label="Dashboard" id="dashboard" current={view} set={setView}/>}
         {nav.includes('projects') && <NavItem icon="🏗" label="Projects" id="projects" current={view} set={setView} badge={PROJECTS.length.toString()}/>}
@@ -1273,10 +1313,14 @@ export default function MDOSApp() {
       </div>
       <div style={{padding:'12px 14px',borderTop:'0.5px solid rgba(255,255,255,0.1)',display:'flex',alignItems:'center',gap:9}}>
         <div style={{width:30,height:30,borderRadius:'50%',background:'var(--mdi-gold)',color:'var(--mdi-green)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:500,flexShrink:0}}>{user.initials}</div>
-        <div>
+        <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:12,color:'#fff',fontWeight:500}}>{user.name}</div>
           <div style={{fontSize:10,color:'rgba(255,255,255,0.4)'}}>{user.role}</div>
         </div>
+        <button onClick={handleLogout} title="Log out"
+          style={{background:'transparent',border:'0.5px solid rgba(255,255,255,0.2)',borderRadius:6,color:'rgba(255,255,255,0.5)',fontSize:11,padding:'4px 7px',cursor:'pointer',flexShrink:0}}
+          onMouseOver={e=>(e.currentTarget.style.color='#fff')}
+          onMouseOut={e=>(e.currentTarget.style.color='rgba(255,255,255,0.5)')}>↩</button>
       </div>
     </div>
   )
@@ -2049,6 +2093,72 @@ export default function MDOSApp() {
   }
 
   // ── App shell  // ── App shell ─────────────────────────────────────────────────────────────────
+  if (!loggedIn) return (
+    <div style={{minHeight:'100vh',background:'var(--mdi-green)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:20}}>
+      {/* Logo */}
+      <div style={{marginBottom:32,textAlign:'center'}}>
+        <div style={{fontSize:36,fontWeight:600,color:'#fff',letterSpacing:-1}}>MD<span style={{color:'var(--mdi-gold)'}}>OS</span></div>
+        <div style={{fontSize:11,letterSpacing:'0.15em',color:'rgba(255,255,255,0.45)',textTransform:'uppercase',marginTop:4}}>Moderne Development, Inc.</div>
+      </div>
+
+      {/* Login card */}
+      <div style={{background:'#fff',borderRadius:12,padding:'32px 36px',width:'100%',maxWidth:400,boxShadow:'0 24px 64px rgba(0,0,0,0.3)'}}>
+        <div style={{fontWeight:600,fontSize:18,color:'#1a1a1a',marginBottom:4}}>Sign in to MDOS</div>
+        <div style={{fontSize:13,color:'#888',marginBottom:24}}>Alpha Platform — Authorized users only</div>
+
+        <form onSubmit={handleLogin}>
+          <div style={{marginBottom:14}}>
+            <label style={{display:'block',fontSize:12,fontWeight:500,color:'#555',marginBottom:5}}>Email address</label>
+            <input type="email" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)}
+              placeholder="you@example.com" required autoFocus
+              style={{width:'100%',fontSize:13,padding:'9px 12px',border:'1px solid rgba(0,0,0,0.2)',borderRadius:8,outline:'none',boxSizing:'border-box' as any}}/>
+          </div>
+          <div style={{marginBottom:20}}>
+            <label style={{display:'block',fontSize:12,fontWeight:500,color:'#555',marginBottom:5}}>Password</label>
+            <input type="password" value={loginPass} onChange={e=>setLoginPass(e.target.value)}
+              placeholder="Enter your password" required
+              style={{width:'100%',fontSize:13,padding:'9px 12px',border:'1px solid rgba(0,0,0,0.2)',borderRadius:8,outline:'none',boxSizing:'border-box' as any}}/>
+          </div>
+
+          {loginError && (
+            <div style={{background:'#FCEBEB',border:'0.5px solid #E24B4A',borderRadius:8,padding:'9px 12px',fontSize:12,color:'#A32D2D',marginBottom:16}}>
+              {loginError}
+            </div>
+          )}
+
+          <button type="submit" disabled={loginLoading}
+            style={{width:'100%',padding:'11px',background:'var(--mdi-green)',color:'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:500,cursor:loginLoading?'default':'pointer',opacity:loginLoading?0.7:1}}>
+            {loginLoading ? 'Signing in...' : 'Sign in'}
+          </button>
+        </form>
+
+        {/* Demo credentials table */}
+        <div style={{marginTop:24,borderTop:'0.5px solid rgba(0,0,0,0.1)',paddingTop:20}}>
+          <div style={{fontSize:11,fontWeight:500,color:'#888',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.08em'}}>Demo Credentials</div>
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {[
+              {label:'MDI Admin',        email:'edgar@mdi.build',     pass:'mdi2024!',    color:'#3C3489',tc:'#CECBF6'},
+              {label:'MDI Team',         email:'paul@mdi.build',      pass:'mdi2024!',    color:'#0C447C',tc:'#B5D4F4'},
+              {label:'Alpha JV Partner', email:'daniel@modstone.com', pass:'modstone24!', color:'#3B6D11',tc:'#C0DD97'},
+              {label:'Investor',         email:'richard@wharton.edu', pass:'investor24!', color:'#5F5E5A',tc:'#D3D1C7'},
+            ].map(c=>(
+              <div key={c.email}
+                style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',background:'#f5f4f0',borderRadius:7,cursor:'pointer'}}
+                onClick={()=>{setLoginEmail(c.email);setLoginPass(c.pass)}}>
+                <span style={{fontSize:10,padding:'2px 7px',borderRadius:8,background:c.color,color:c.tc,fontWeight:500,flexShrink:0}}>{c.label}</span>
+                <span style={{fontSize:11,color:'#555',flex:1}}>{c.email}</span>
+                <span style={{fontSize:10,color:'#aaa',fontFamily:'monospace'}}>{c.pass}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{fontSize:10,color:'#aaa',marginTop:8,textAlign:'center'}}>Click a row to auto-fill credentials</div>
+        </div>
+      </div>
+
+      <div style={{marginTop:24,fontSize:11,color:'rgba(255,255,255,0.3)'}}>MDOS Platform Alpha · Moderne Development, Inc. · mdi.build</div>
+    </div>
+  )
+
   return (
     <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
       <NewProjectModal
