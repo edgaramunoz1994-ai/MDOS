@@ -9,13 +9,13 @@ const EMPTY_PROJECT_FORM = {
   zoning: '', budgetMin: '', budgetMax: '', partner: '', notes: '',
 }
 
-type View = 'dashboard' | 'projects' | 'project-detail' | 'ifindy' | 'roles' | 'notifications'
+type View = 'dashboard' | 'projects' | 'project-detail' | 'ifindy' | 'vertikaal' | 'roles' | 'notifications'
 type Role = 'admin' | 'team' | 'partner' | 'investor'
 type TabRole = Role
 
 const ROLE_NAV: Record<Role, View[]> = {
-  admin:    ['dashboard','projects','ifindy','roles','notifications'],
-  team:     ['dashboard','projects','ifindy','notifications'],
+  admin:    ['dashboard','projects','ifindy','vertikaal','roles','notifications'],
+  team:     ['dashboard','projects','ifindy','vertikaal','notifications'],
   partner:  ['dashboard','projects'],
   investor: ['dashboard'],
 }
@@ -636,6 +636,308 @@ function BuiltScheduleView({tasks, view, totalDays, phases}: {tasks:any[], view:
 }
 
 
+// ── Module 02 — VERTIKAAL BIM Generation ─────────────────────────────────────
+function VertikaalView({screeningResult, screeningInput, onBack}: {screeningResult:any, screeningInput:any, onBack:()=>void}) {
+  const [step, setStep] = React.useState<'brief'|'config'|'generating'|'ready'>('brief')
+  const [bimConfig, setBimConfig] = React.useState({
+    designSeries: 'A', stories: '1', totalSqft: '1420', unitCount: '1',
+    roofType: 'gable', foundationType: 'slab', porchConfig: 'front',
+    wallThickness: '150', ceilingHeight: '9', windowPackage: 'standard',
+    exportFormats: { ifc: true, rvt: true, dwg: true, pdf: true, xlsx: true },
+    roboticTarget: 'icon', generateGCode: true,
+  })
+  const [progress, setProgress] = React.useState(0)
+  const [progressLabel, setProgressLabel] = React.useState('')
+
+  const passed = screeningResult?.overall === 'PASS' || screeningResult?.overall === 'FLAG'
+  const address = screeningInput?.address || '—'
+  const method = screeningInput?.method || 'THREEDCP'
+  const units = parseInt(screeningInput?.units) || 1
+
+  // Simulate BIM generation progress
+  const startGeneration = () => {
+    setStep('generating')
+    setProgress(0)
+    const steps = [
+      [10, 'Parsing parcel boundary from Regrid…'],
+      [22, 'Applying zoning setbacks and height limits…'],
+      [35, 'Generating floor plan from Design Series ' + bimConfig.designSeries + '…'],
+      [48, 'Extruding 3DCP wall geometry…'],
+      [58, 'Placing window and door openings…'],
+      [67, 'Generating roof structure…'],
+      [75, 'Running structural calculations…'],
+      [83, 'Exporting IFC open BIM package…'],
+      [90, 'Generating Revit model…'],
+      [95, 'Compiling cost estimate spreadsheet…'],
+      [100, 'BIM package ready ✓'],
+    ]
+    let i = 0
+    const tick = () => {
+      if (i < steps.length) {
+        setProgress(steps[i][0] as number)
+        setProgressLabel(steps[i][1] as string)
+        i++
+        setTimeout(tick, 420)
+      } else {
+        setTimeout(() => setStep('ready'), 600)
+      }
+    }
+    tick()
+  }
+
+  const BIM_FILES = [
+    { format:'IFC',  filename:`${screeningInput?.market?.split(',')[0]?.replace(' ','_')||'Project'}_DS${bimConfig.designSeries}_v1_openBIM.ifc`,  size:'22.1 MB', color:'#EEEDFE', tc:'#3C3489' },
+    { format:'RVT',  filename:`${screeningInput?.market?.split(',')[0]?.replace(' ','_')||'Project'}_DS${bimConfig.designSeries}_v1_Revit2024.rvt`, size:'41.8 MB', color:'#E6F1FB', tc:'#0C447C' },
+    { format:'DWG',  filename:`${screeningInput?.market?.split(',')[0]?.replace(' ','_')||'Project'}_DS${bimConfig.designSeries}_v1_SitePlan.dwg`,  size:'3.4 MB',  color:'#FAEEDA', tc:'#633806' },
+    { format:'XLSX', filename:`${screeningInput?.market?.split(',')[0]?.replace(' ','_')||'Project'}_DS${bimConfig.designSeries}_v1_CostEstimate.xlsx`, size:'0.9 MB', color:'#EAF3DE', tc:'#27500A' },
+    { format:'PDF',  filename:`${screeningInput?.market?.split(',')[0]?.replace(' ','_')||'Project'}_DS${bimConfig.designSeries}_v1_PermitSet.pdf`, size:'12.6 MB', color:'#FCEBEB', tc:'#791F1F' },
+  ]
+
+  return (
+    <div style={{padding:20}}>
+      {/* Module header */}
+      <div style={{background:'var(--mdi-green)',borderRadius:10,padding:'14px 20px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <div>
+          <div style={{fontSize:10,letterSpacing:'0.1em',color:'rgba(255,255,255,0.5)',textTransform:'uppercase',marginBottom:2}}>Module 02</div>
+          <div style={{fontSize:16,fontWeight:500,color:'#fff'}}>VERTIKAAL — BIM Generation</div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.6)',marginTop:2}}>{address}</div>
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          {/* Step tracker */}
+          {['brief','config','generating','ready'].map((s,i) => (
+            <div key={s} style={{display:'flex',alignItems:'center',gap:4}}>
+              <div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:500,
+                background:step===s?'var(--mdi-gold)':['brief','config','generating','ready'].indexOf(step)>i?'rgba(255,255,255,0.3)':'rgba(255,255,255,0.1)',
+                color:step===s?'var(--mdi-green)':'rgba(255,255,255,0.7)'}}>
+                {['brief','config','generating','ready'].indexOf(step)>i?'✓':i+1}
+              </div>
+              {i<3&&<div style={{width:20,height:1,background:'rgba(255,255,255,0.2)'}}/>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* M01 → M02 handoff banner */}
+      {screeningResult && (
+        <div style={{background: screeningResult.overall==='PASS'?'#EAF3DE':'#FAEEDA', border:`0.5px solid ${screeningResult.overall==='PASS'?'#639922':'#BA7517'}`, borderRadius:8,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:10}}>
+          <div style={{fontSize:20}}>{screeningResult.overall==='PASS'?'✅':'⚠️'}</div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:12,fontWeight:500,color:screeningResult.overall==='PASS'?'#27500A':'#633806'}}>
+              M01 Feasibility {screeningResult.overall==='PASS'?'Passed':'Flagged'} — Score {screeningResult.score}/100
+            </div>
+            <div style={{fontSize:11,color:screeningResult.overall==='PASS'?'#3B6D11':'#854F0B',marginTop:1}}>
+              {screeningResult.passes} dimensions passed · {screeningResult.flags} flagged · {method} method · {units} unit{units>1?'s':''}
+            </div>
+          </div>
+          <button className="btn" style={{fontSize:11}} onClick={onBack}>← Back to M01</button>
+        </div>
+      )}
+
+      {step === 'brief' && (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div className="panel">
+            <div style={{fontWeight:500,fontSize:13,marginBottom:4}}>What is VERTIKAAL?</div>
+            <div style={{fontSize:12,color:'#555',lineHeight:1.7,marginBottom:14}}>
+              VERTIKAAL is MDI's proprietary BIM automation engine. It takes the feasibility-cleared parcel data from M01 and generates a complete 5D BIM package — geometry, structure, MEP routing, cost estimate, and permit-ready drawings — in minutes rather than weeks.
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16}}>
+              {[
+                {icon:'📐', title:'Parametric Design Series', desc:'Choose from MDI's Design Series library (A–F) pre-optimized for 3DCP and SCIP'},
+                {icon:'📦', title:'Multi-format Export', desc:'IFC, Revit, DWG, PDF permit set, and XLSX cost estimate generated simultaneously'},
+                {icon:'🤖', title:'Robotic Code Ready', desc:'STL and G-code export for ICON Titan and RIC Robotics included automatically'},
+                {icon:'💰', title:'5D Cost Estimate', desc:'Live RSMeans-linked cost estimate updates as you change design parameters'},
+              ].map(f=>(
+                <div key={f.title} style={{display:'flex',gap:10,padding:'8px 10px',background:'#f5f4f0',borderRadius:8}}>
+                  <div style={{fontSize:18,flexShrink:0}}>{f.icon}</div>
+                  <div><div style={{fontSize:12,fontWeight:500}}>{f.title}</div><div style={{fontSize:11,color:'#888',marginTop:1}}>{f.desc}</div></div>
+                </div>
+              ))}
+            </div>
+            <button className="btn btn-primary" style={{width:'100%',justifyContent:'center'}} onClick={()=>setStep('config')}>
+              Configure BIM Parameters →
+            </button>
+          </div>
+          <div className="panel">
+            <div style={{fontWeight:500,fontSize:13,marginBottom:12}}>Parcel Inputs from M01</div>
+            {[
+              ['Address', address],
+              ['Construction Method', method],
+              ['Target Units', String(units)],
+              ['Lot Size', screeningInput?.lot ? screeningInput.lot + ' acres' : '—'],
+              ['Zoning', screeningInput?.zoning || '—'],
+              ['Goal', (screeningInput?.goal||'').replace(/_/g,' ')],
+              ['M01 Score', screeningResult ? screeningResult.score + '/100' : 'Not run'],
+            ].map(([l,v])=>(
+              <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)',fontSize:12}}>
+                <span style={{color:'#888'}}>{l}</span><span style={{fontWeight:500}}>{v}</span>
+              </div>
+            ))}
+            <div style={{marginTop:14,background:'#f5f4f0',borderRadius:8,padding:'10px 12px',fontSize:11,color:'#666'}}>
+              📌 VERTIKAAL uses the parcel boundary from Regrid and the zoning setbacks from Municode to automatically position the building footprint on the lot.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {step === 'config' && (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div className="panel">
+            <div style={{fontWeight:500,fontSize:13,marginBottom:12}}>🏗 Design Parameters</div>
+            {[
+              {label:'Design Series', key:'designSeries', type:'select', opts:['A','B','C','D','E','F'], desc:'A = compact SFH, B = open plan, C = courtyard, D = duplex, E = tri-plex, F = quad'},
+              {label:'Stories', key:'stories', type:'select', opts:['1','2']},
+              {label:'Total Sqft (per unit)', key:'totalSqft', type:'number', placeholder:'e.g. 1420'},
+              {label:'Roof Type', key:'roofType', type:'select', opts:['gable','hip','flat','shed']},
+              {label:'Foundation', key:'foundationType', type:'select', opts:['slab','crawlspace','basement']},
+              {label:'Porch Config', key:'porchConfig', type:'select', opts:['front','rear','wraparound','none']},
+              {label:'Wall Thickness (mm)', key:'wallThickness', type:'select', opts:['100','150','200','250']},
+              {label:'Ceiling Height (ft)', key:'ceilingHeight', type:'select', opts:['8','9','10','11','12']},
+              {label:'Window Package', key:'windowPackage', type:'select', opts:['standard','energy-plus','impact-resistant']},
+            ].map(f=>(
+              <div key={f.key} style={{marginBottom:10}}>
+                <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>{f.label}</label>
+                {f.type==='select'
+                  ? <select value={(bimConfig as any)[f.key]} onChange={e=>setBimConfig(c=>({...c,[f.key]:e.target.value}))} style={{width:'100%',fontSize:12,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}>
+                      {f.opts!.map(o=><option key={o} value={o}>{o}</option>)}
+                    </select>
+                  : <input type="number" value={(bimConfig as any)[f.key]} onChange={e=>setBimConfig(c=>({...c,[f.key]:e.target.value}))} placeholder={f.placeholder} style={{width:'100%',fontSize:12,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}/>
+                }
+                {f.desc && <div style={{fontSize:10,color:'#aaa',marginTop:2}}>{f.desc}</div>}
+              </div>
+            ))}
+          </div>
+          <div className="panel">
+            <div style={{fontWeight:500,fontSize:13,marginBottom:12}}>📦 Export Configuration</div>
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,color:'#888',marginBottom:8}}>BIM Deliverables</div>
+              {[
+                {key:'ifc',  label:'IFC — Open BIM (required)', locked:true},
+                {key:'rvt',  label:'RVT — Autodesk Revit 2024'},
+                {key:'dwg',  label:'DWG — AutoCAD Site Plan'},
+                {key:'pdf',  label:'PDF — Permit Set'},
+                {key:'xlsx', label:'XLSX — 5D Cost Estimate'},
+              ].map(f=>(
+                <div key={f.key} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'7px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
+                  <span style={{fontSize:12,color:f.locked?'#aaa':'#1a1a1a'}}>{f.label}</span>
+                  <div onClick={()=>{ if(!f.locked) setBimConfig(c=>({...c,exportFormats:{...c.exportFormats,[f.key]:!(c.exportFormats as any)[f.key]}}))}}
+                    style={{width:28,height:16,borderRadius:8,background:(bimConfig.exportFormats as any)[f.key]?'var(--mdi-gold)':'#ccc',position:'relative',cursor:f.locked?'default':'pointer',transition:'background 0.15s'}}>
+                    <div style={{width:12,height:12,borderRadius:'50%',background:'#fff',position:'absolute',top:2,left:(bimConfig.exportFormats as any)[f.key]?14:2,transition:'left 0.15s'}}/>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,color:'#888',marginBottom:8}}>Robotic Code Output</div>
+              {[
+                {key:'icon',   label:'ICON Titan — G-code print sequence'},
+                {key:'ric',    label:'RIC Robotics — Print package'},
+              ].map(f=>(
+                <div key={f.key} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'7px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
+                  <span style={{fontSize:12}}>{f.label}</span>
+                  <div onClick={()=>setBimConfig(c=>({...c,roboticTarget:f.key}))}
+                    style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${bimConfig.roboticTarget===f.key?'var(--mdi-green)':'#ccc'}`,background:bimConfig.roboticTarget===f.key?'var(--mdi-green)':'transparent',cursor:'pointer'}}/>
+                </div>
+              ))}
+            </div>
+            <div style={{background:'#f5f4f0',borderRadius:8,padding:'10px 12px',marginBottom:14,fontSize:11,color:'#666'}}>
+              <div style={{fontWeight:500,marginBottom:4}}>Estimated Outputs</div>
+              <div>Design Series {bimConfig.designSeries} · {bimConfig.stories}-story · {parseInt(bimConfig.totalSqft)*units} sqft total</div>
+              <div style={{marginTop:2}}>Est. concrete: ~{Math.round(parseInt(bimConfig.totalSqft||'1000')*0.18*units)} m³ · Est. print time: {Math.round(parseInt(bimConfig.totalSqft||'1000')*0.012*units)} hrs</div>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn" style={{flex:1,justifyContent:'center'}} onClick={()=>setStep('brief')}>← Back</button>
+              <button className="btn btn-primary" style={{flex:2,justifyContent:'center'}} onClick={startGeneration}>
+                Generate BIM Package ⚡
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {step === 'generating' && (
+        <div className="panel" style={{textAlign:'center',padding:'50px 30px'}}>
+          <div style={{fontSize:36,marginBottom:16}}>⚙️</div>
+          <div style={{fontWeight:500,fontSize:15,marginBottom:6}}>Generating BIM Package…</div>
+          <div style={{fontSize:12,color:'#888',marginBottom:24,minHeight:20}}>{progressLabel}</div>
+          <div style={{background:'#e8e8e0',borderRadius:8,height:10,overflow:'hidden',maxWidth:400,margin:'0 auto 12px'}}>
+            <div style={{height:'100%',background:'var(--mdi-green)',borderRadius:8,width:`${progress}%`,transition:'width 0.4s ease'}}/>
+          </div>
+          <div style={{fontSize:13,fontWeight:500,color:'var(--mdi-green)'}}>{progress}%</div>
+          <div style={{fontSize:11,color:'#aaa',marginTop:20}}>Design Series {bimConfig.designSeries} · {bimConfig.stories}-story · {bimConfig.totalSqft} sqft</div>
+        </div>
+      )}
+
+      {step === 'ready' && (
+        <div>
+          <div style={{background:'#EAF3DE',border:'0.5px solid #639922',borderRadius:8,padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:10}}>
+            <div style={{fontSize:22}}>✅</div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:500,color:'#27500A'}}>BIM Package Generated Successfully</div>
+              <div style={{fontSize:11,color:'#3B6D11',marginTop:1}}>Design Series {bimConfig.designSeries} · {bimConfig.stories}-story · {bimConfig.totalSqft} sqft · {units} unit{units>1?'s':''} · {address}</div>
+            </div>
+            <button className="btn" style={{fontSize:11}}>📤 Share with Partner</button>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div className="panel">
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+                <div style={{fontWeight:500,fontSize:13}}>📦 BIM Deliverables</div>
+                <button className="btn btn-primary" style={{fontSize:11,padding:'4px 10px'}}>↓ Download All</button>
+              </div>
+              {BIM_FILES.map(f=>(
+                <div key={f.format} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
+                  <span style={{fontSize:10,fontWeight:500,padding:'2px 7px',borderRadius:5,background:f.color,color:f.tc,flexShrink:0,width:36,textAlign:'center'}}>{f.format}</span>
+                  <span style={{fontSize:12,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.filename}</span>
+                  <span style={{fontSize:10,color:'#aaa',flexShrink:0}}>{f.size}</span>
+                  <button className="btn" style={{padding:'3px 8px',fontSize:11,flexShrink:0}}>↓</button>
+                </div>
+              ))}
+              <div style={{marginTop:12,background:'#f5f4f0',borderRadius:8,padding:'8px 10px',fontSize:11,color:'#666'}}>
+                🔒 IP: Design Series {bimConfig.designSeries} copyright MDI. BIM exports are partner property — unrestricted download.
+              </div>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              <div className="panel" style={{marginBottom:0}}>
+                <div style={{fontWeight:500,fontSize:13,marginBottom:10}}>🤖 Robotic Code Output</div>
+                {[
+                  {label:'ICON Titan G-code', file:`print_seq_DS${bimConfig.designSeries}_v1.gcode`, size:'5.2 MB', color:'#E1F5EE', tc:'#085041'},
+                  {label:'RIC Robotics Package', file:`ric_DS${bimConfig.designSeries}_v1.pkg`, size:'3.8 MB', color:'#EEEDFE', tc:'#3C3489'},
+                  {label:'STL (printable geometry)', file:`DS${bimConfig.designSeries}_walls_v1.stl`, size:'18.4 MB', color:'#f0f0ec', tc:'#555'},
+                ].map(f=>(
+                  <div key={f.label} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
+                    <span style={{fontSize:10,padding:'2px 6px',borderRadius:5,background:f.color,color:f.tc,flexShrink:0,fontSize:10}}>{f.label.split(' ')[0]}</span>
+                    <span style={{fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.file}</span>
+                    <span style={{fontSize:10,color:'#aaa'}}>{f.size}</span>
+                    <button className="btn" style={{padding:'3px 8px',fontSize:11}}>↓</button>
+                  </div>
+                ))}
+              </div>
+              <div className="panel" style={{marginBottom:0}}>
+                <div style={{fontWeight:500,fontSize:13,marginBottom:10}}>📊 5D Cost Summary</div>
+                {[
+                  ['Construction (3DCP)', `$${Math.round(parseInt(bimConfig.totalSqft||'1000')*units*155).toLocaleString()}`],
+                  ['Materials', `$${Math.round(parseInt(bimConfig.totalSqft||'1000')*units*62).toLocaleString()}`],
+                  ['MEP Rough-in', `$${Math.round(parseInt(bimConfig.totalSqft||'1000')*units*38).toLocaleString()}`],
+                  ['Finishes', `$${Math.round(parseInt(bimConfig.totalSqft||'1000')*units*45).toLocaleString()}`],
+                  ['Total Estimate', `$${Math.round(parseInt(bimConfig.totalSqft||'1000')*units*300).toLocaleString()}`],
+                ].map(([l,v],i)=>(
+                  <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)',fontSize:12,fontWeight:i===4?500:400,background:i===4?'transparent':'transparent'}}>
+                    <span style={{color:i===4?'#1a1a1a':'#888'}}>{l}</span>
+                    <span style={{color:i===4?'var(--mdi-green)':'#1a1a1a'}}>{v}</span>
+                  </div>
+                ))}
+              </div>
+              <button className="btn btn-primary" style={{justifyContent:'center',padding:'10px'}} onClick={()=>alert('Advancing to Module 03 — Robotic Code Generation (coming soon)')}>
+                → Advance to M03 Robotic Code
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 export default function MDOSApp() {
   const [role, setRole] = useState<Role>('admin')
   const [view, setView] = useState<View>('dashboard')
@@ -740,7 +1042,8 @@ export default function MDOSApp() {
       <div style={{flex:1,padding:'10px 0'}}>
         {nav.includes('dashboard') && <NavItem icon="⊞" label="Dashboard" id="dashboard" current={view} set={setView}/>}
         {nav.includes('projects') && <NavItem icon="🏗" label="Projects" id="projects" current={view} set={setView} badge={PROJECTS.length.toString()}/>}
-        {nav.includes('ifindy') && <NavItem icon="🔍" label="iFindy Screening" id="ifindy" current={view} set={setView}/>}
+        {nav.includes('ifindy') && <NavItem icon="🔍" label="Land Feasibility" id="ifindy" current={view} set={setView}/>}
+        {nav.includes('vertikaal') && <NavItem icon="📐" label="M02 VERTIKAAL BIM" id="vertikaal" current={view} set={setView}/>}
         {nav.includes('roles') && <>
           <div style={{padding:'8px 14px 4px',fontSize:10,letterSpacing:'0.1em',color:'rgba(255,255,255,0.3)',textTransform:'uppercase'}}>System</div>
           <NavItem icon="🔐" label="Roles & Access" id="roles" current={view} set={setView}/>
@@ -768,7 +1071,7 @@ export default function MDOSApp() {
   )
 
   // ── Topbar ────────────────────────────────────────────────────────────────────
-  const titles: Record<View,string> = { dashboard:'Dashboard', projects:'Projects', 'project-detail':activeProject.name, ifindy:'Module 01 — iFindy Land Screening', roles:'Roles & Access', notifications:'Notifications' }
+  const titles: Record<View,string> = { dashboard:'Dashboard', projects:'Projects', 'project-detail':activeProject.name, ifindy:'Module 01 — Land Feasibility Screening', vertikaal:'Module 02 — VERTIKAAL BIM Generation', roles:'Roles & Access', notifications:'Notifications' }
   const Topbar = () => (
     <div style={{background:'#fff',borderBottom:'0.5px solid rgba(0,0,0,0.1)',padding:'10px 20px',display:'flex',alignItems:'center',gap:12}}>
       {view==='project-detail' && <button className="btn" onClick={()=>setView('projects')} style={{marginRight:4}}>← Projects</button>}
@@ -1201,7 +1504,7 @@ export default function MDOSApp() {
             <div style={{display:'flex',gap:8,marginBottom:14}}>
               <button className="btn" style={{flex:1,justifyContent:'center'}}>📄 Land Report</button>
               <button className="btn" style={{flex:1,justifyContent:'center'}}>🧠 REfax Request</button>
-              <button className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>→ Advance to M02</button>
+              <button className="btn btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>setView('vertikaal')}>→ Advance to M02</button>
             </div>
             <div className="section-label">Scoring Dimensions</div>
             {screeningResult.dims.map((d:any)=>(
@@ -1406,6 +1709,7 @@ export default function MDOSApp() {
           {view==='ifindy' && <IFindyView/>}
           {view==='roles' && <div style={{flex:1,overflowY:'auto'}}><RolesView/></div>}
           {view==='notifications' && <div style={{flex:1,overflowY:'auto'}}><NotificationsView/></div>}
+          {view==='vertikaal' && <div style={{flex:1,overflowY:'auto'}}><VertikaalView screeningResult={screeningResult} screeningInput={screeningInput} onBack={()=>setView('ifindy')}/></div>}
         </div>
       </div>
     </div>
