@@ -938,6 +938,87 @@ function VertikaalView({screeningResult, screeningInput, onBack}: {screeningResu
 }
 
 
+// ── AI Notes summarization — calls Claude API to summarize transcript ──────────
+async function handleNotesFile(
+  file: File,
+  projectId: string,
+  setUploading: (v:boolean)=>void,
+  setUploadProgress: (v:string)=>void,
+  setUploadFileName: (v:string)=>void,
+  setUploadPreview: (v:string)=>void,
+  setUploadMode: (v:boolean)=>void,
+  addComm: (id:string, body:string, author:string)=>void,
+  authorName: string
+) {
+  setUploadFileName(file.name)
+  setUploading(true)
+  setUploadProgress('Reading file...')
+
+  try {
+    // Read file as text
+    const text = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = e => resolve(e.target?.result as string || '')
+      reader.onerror = () => reject(new Error('Failed to read file'))
+      reader.readAsText(file)
+    })
+
+    if (!text.trim()) throw new Error('File appears to be empty')
+
+    setUploadProgress('Sending to Claude for summarization...')
+
+    // Truncate to ~12,000 chars to stay within token limits
+    const truncated = text.length > 12000 ? text.slice(0, 12000) + "\n\n[transcript truncated]" : text
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: `You are a construction project assistant for Moderne Development, Inc. (MDI), a technology company building AI-powered construction workflows using 3D concrete printing (3DCP) and BIM automation.
+
+Summarize the following meeting transcript or AI notetaker output into a concise project communication log entry. Format it as:
+- 2-3 sentence overview of what was discussed
+- Key decisions made (bullet points, max 4)
+- Action items / next steps (bullet points with owner if mentioned, max 4)
+- Any blockers or risks flagged
+
+Keep it factual, professional, and under 250 words. Do not add any preamble — start directly with the summary.`,
+        messages: [{
+          role: 'user',
+          content: `Project ID: ${projectId}
+
+Meeting transcript:
+
+${truncated}`
+        }]
+      })
+    })
+
+    if (!response.ok) {
+      const err = await response.json()
+      throw new Error(err?.error?.message || 'API error ' + response.status)
+    }
+
+    const data = await response.json()
+    const summary = data.content?.find((b:any) => b.type === 'text')?.text || ''
+
+    if (!summary) throw new Error('No summary returned')
+
+    setUploadProgress('Summary ready')
+    setUploading(false)
+    setUploadPreview(summary)
+
+  } catch (err: any) {
+    setUploading(false)
+    setUploadProgress('')
+    setUploadPreview('Error: ' + (err.message || 'Something went wrong. Please try again.'))
+    setUploadFileName('error')
+  }
+}
+
+
 export default function MDOSApp() {
   const [role, setRole] = useState<Role>('admin')
   const [view, setView] = useState<View>('dashboard')
@@ -1261,6 +1342,11 @@ export default function MDOSApp() {
     const [draft, setDraft] = useState('')
     const [draftAuthor, setDraftAuthor] = useState('')
     const [expanded, setExpanded] = useState(false)
+    const [uploadMode, setUploadMode] = useState(false)
+    const [uploading, setUploading] = useState(false)
+    const [uploadProgress, setUploadProgress] = useState('')
+    const [uploadFileName, setUploadFileName] = useState('')
+    const [uploadPreview, setUploadPreview] = useState('')
     return (
       <div style={{display:'flex',flexDirection:'column',gap:12}}>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
@@ -1287,9 +1373,15 @@ export default function MDOSApp() {
               💬 Communication Log
               <span style={{fontSize:11,color:'#aaa',fontWeight:400,marginLeft:6}}>({comms.length})</span>
             </div>
-            <button className="btn" onClick={()=>setExpanded(e=>!e)} style={{fontSize:11}}>
-              {expanded ? '✕ Cancel' : '+ Add Note'}
-            </button>
+            <div style={{display:'flex',gap:6}}>
+              <button className="btn" style={{fontSize:11}}
+                onClick={()=>{setUploadMode(u=>!u);setExpanded(false);setUploadFileName('');setUploadPreview('')}}>
+                {uploadMode ? '✕ Cancel' : '🎙 AI Notes'}
+              </button>
+              <button className="btn" onClick={()=>{setExpanded(e=>!e);setUploadMode(false)}} style={{fontSize:11}}>
+                {expanded ? '✕ Cancel' : '+ Add Note'}
+              </button>
+            </div>
           </div>
           {expanded && (
             <div style={{background:'#f0f7f4',border:'0.5px solid #b8ddd0',borderRadius:8,padding:12,marginBottom:12}}>
@@ -1314,7 +1406,70 @@ export default function MDOSApp() {
               </div>
             </div>
           )}
-          {comms.length===0 && !expanded && (
+          {uploadMode && (
+            <div style={{background:'#EEF0FE',border:'0.5px solid #b0b8f0',borderRadius:8,padding:12,marginBottom:12}}>
+              <div style={{fontWeight:500,fontSize:12,marginBottom:8,color:'#3C3489',display:'flex',alignItems:'center',gap:6}}>
+                🎙 Upload AI Notetaker Transcript
+              </div>
+              <div style={{fontSize:11,color:'#534AB7',marginBottom:10,lineHeight:1.5}}>
+                Upload a .txt, .md, or .docx transcript from Otter.ai, Fireflies, Zoom, or any AI notetaker.
+                Claude will summarize it into a concise project communication log entry.
+              </div>
+              {!uploadFileName ? (
+                <div
+                  style={{border:'1.5px dashed #b0b8f0',borderRadius:8,padding:'24px 16px',textAlign:'center',cursor:'pointer',background:'rgba(255,255,255,0.6)'}}
+                  onClick={()=>document.getElementById('notes-upload-'+p.id)?.click()}
+                  onDragOver={e=>e.preventDefault()}
+                  onDrop={e=>{
+                    e.preventDefault()
+                    const file = e.dataTransfer.files[0]
+                    if (file) handleNotesFile(file, p.id, setUploading, setUploadProgress, setUploadFileName, setUploadPreview, setUploadMode, addComm, user.name)
+                  }}>
+                  <div style={{fontSize:28,marginBottom:6}}>📄</div>
+                  <div style={{fontSize:12,color:'#534AB7',fontWeight:500}}>Drop transcript file here</div>
+                  <div style={{fontSize:11,color:'#888',marginTop:3}}>.txt · .md · .docx · .pdf — max 2MB</div>
+                  <input id={'notes-upload-'+p.id} type="file" accept=".txt,.md,.docx,.pdf" style={{display:'none'}}
+                    onChange={e=>{
+                      const file = e.target.files?.[0]
+                      if (file) handleNotesFile(file, p.id, setUploading, setUploadProgress, setUploadFileName, setUploadPreview, setUploadMode, addComm, user.name)
+                    }}/>
+                </div>
+              ) : uploading ? (
+                <div style={{textAlign:'center',padding:'20px 0'}}>
+                  <div style={{fontSize:24,marginBottom:8}}>✨</div>
+                  <div style={{fontWeight:500,fontSize:12,marginBottom:4,color:'#3C3489'}}>Claude is summarizing...</div>
+                  <div style={{fontSize:11,color:'#534AB7',marginBottom:12}}>{uploadProgress}</div>
+                  <div style={{background:'rgba(255,255,255,0.6)',borderRadius:6,height:6,overflow:'hidden',maxWidth:300,margin:'0 auto'}}>
+                    <div style={{height:'100%',background:'#534AB7',borderRadius:6,width:'60%',animation:'none'}}/>
+                  </div>
+                </div>
+              ) : uploadPreview ? (
+                <div>
+                  <div style={{fontSize:11,color:'#888',marginBottom:6}}>
+                    📄 <strong>{uploadFileName}</strong> — summary ready
+                  </div>
+                  <div style={{background:'rgba(255,255,255,0.8)',borderRadius:7,padding:'10px 12px',fontSize:11,color:'#333',lineHeight:1.6,marginBottom:10,maxHeight:160,overflowY:'auto',border:'0.5px solid #b0b8f0'}}>
+                    {uploadPreview}
+                  </div>
+                  <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+                    <button className="btn" style={{fontSize:11}} onClick={()=>{setUploadFileName('');setUploadPreview('')}}>
+                      ↺ Re-upload
+                    </button>
+                    <button className="btn btn-primary" style={{fontSize:11,background:'#3C3489',borderColor:'#3C3489'}}
+                      onClick={()=>{
+                        addComm(p.id, "📋 Meeting Summary (AI):\n\n" + uploadPreview, user.name)
+                        setUploadMode(false)
+                        setUploadFileName('')
+                        setUploadPreview('')
+                      }}>
+                      Post to Log ✓
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
+          {comms.length===0 && !expanded && !uploadMode && (
             <div style={{fontSize:12,color:'#aaa',textAlign:'center',padding:'20px 0'}}>No communications yet — add the first note</div>
           )}
           {comms.map((c:any,i:number)=>(
