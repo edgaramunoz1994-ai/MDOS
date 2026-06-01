@@ -1060,24 +1060,44 @@ function MapPanel({
     document.head.appendChild(script)
   }, [])
 
-  // Initialize map
+  // Initialize map — use setTimeout to ensure container has dimensions
   React.useEffect(() => {
-    if (!mapReady || !mapRef.current || window._mdosMap) return
+    if (!mapReady) return
     const L = window.L
     if (!L) return
 
-    const map = L.map(mapRef.current, {
-      center: [30.2672, -97.7431], // Austin default
-      zoom: 12,
-      zoomControl: true,
-    })
+    // Destroy any existing map instance first
+    if (window._mdosMap) {
+      try { window._mdosMap.remove() } catch(e) {}
+      window._mdosMap = null
+      window._mdosMarker = null
+    }
 
-    L.tileLayer(TILES.satellite.url, {
-      attribution: TILES.satellite.attr,
-      maxZoom: 21,
-    }).addTo(map)
+    // Delay init to ensure the container is painted and has dimensions
+    const timer = setTimeout(() => {
+      if (!mapRef.current) return
+      // Remove any leftover Leaflet state on the div
+      delete (mapRef.current as any)._leaflet_id
 
-    window._mdosMap = map
+      const map = L.map(mapRef.current, {
+        center: [30.2672, -97.7431],
+        zoom: 12,
+        zoomControl: true,
+        preferCanvas: true,
+      })
+
+      L.tileLayer(TILES.satellite.url, {
+        attribution: TILES.satellite.attr,
+        maxZoom: 21,
+      }).addTo(map)
+
+      window._mdosMap = map
+
+      // Force a size recalculation after tiles load
+      setTimeout(() => map.invalidateSize(), 300)
+    }, 150)
+
+    return () => clearTimeout(timer)
   }, [mapReady])
 
   // Update map when coords change
@@ -1086,6 +1106,7 @@ function MapPanel({
     const L = window.L
     if (!L) return
 
+    window._mdosMap.invalidateSize()
     window._mdosMap.setView([coords.lat, coords.lng], coords.zoom)
 
     if (window._mdosMarker) {
@@ -1113,6 +1134,7 @@ function MapPanel({
     })
     const t = TILES[mapStyle]
     L.tileLayer(t.url, {attribution: t.attr, maxZoom: 21}).addTo(window._mdosMap)
+    setTimeout(() => window._mdosMap && window._mdosMap.invalidateSize(), 100)
   }, [mapStyle])
 
   const handleSearch = (e: React.FormEvent) => {
@@ -1143,13 +1165,13 @@ function MapPanel({
       </div>
 
       {/* Map */}
-      <div style={{flex:1,position:'relative',minHeight:280}}>
+      <div style={{flex:1,position:'relative',minHeight:300,height:300}}>
         {!mapReady && (
-          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'#f5f4f0',fontSize:12,color:'#aaa'}}>
+          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'#f5f4f0',fontSize:12,color:'#aaa',zIndex:1}}>
             Loading map...
           </div>
         )}
-        <div ref={mapRef} style={{width:'100%',height:'100%'}}/>
+        <div ref={mapRef} style={{width:'100%',height:'100%',minHeight:300}}/>
         {coords && (
           <div style={{position:'absolute',bottom:8,left:8,zIndex:1000,background:'rgba(13,59,46,0.85)',color:'#fff',fontSize:10,padding:'4px 8px',borderRadius:5,maxWidth:180,lineHeight:1.4}}>
             <div style={{fontWeight:500}}>📍 {address.split(',')[0]}</div>
