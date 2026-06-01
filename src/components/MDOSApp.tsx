@@ -970,39 +970,19 @@ async function handleNotesFile(
     // Truncate to ~12,000 chars to stay within token limits
     const truncated = text.length > 12000 ? text.slice(0, 12000) + "\n\n[transcript truncated]" : text
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('/api/summarize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: `You are a construction project assistant for Moderne Development, Inc. (MDI), a technology company building AI-powered construction workflows using 3D concrete printing (3DCP) and BIM automation.
-
-Summarize the following meeting transcript or AI notetaker output into a concise project communication log entry. Format it as:
-- 2-3 sentence overview of what was discussed
-- Key decisions made (bullet points, max 4)
-- Action items / next steps (bullet points with owner if mentioned, max 4)
-- Any blockers or risks flagged
-
-Keep it factual, professional, and under 250 words. Do not add any preamble — start directly with the summary.`,
-        messages: [{
-          role: 'user',
-          content: `Project ID: ${projectId}
-
-Meeting transcript:
-
-${truncated}`
-        }]
-      })
+      body: JSON.stringify({ transcript: truncated, projectId })
     })
 
     if (!response.ok) {
       const err = await response.json()
-      throw new Error(err?.error?.message || 'API error ' + response.status)
+      throw new Error(err?.error || 'Server error ' + response.status)
     }
 
     const data = await response.json()
-    const summary = data.content?.find((b:any) => b.type === 'text')?.text || ''
+    const summary = data.summary || ''
 
     if (!summary) throw new Error('No summary returned')
 
