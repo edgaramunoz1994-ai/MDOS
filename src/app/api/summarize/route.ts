@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import mammoth from 'mammoth'
+import pdfParse from 'pdf-parse'
 
 async function extractText(b64: string, mime: string, name: string): Promise<string> {
   const buf = Buffer.from(b64, 'base64')
@@ -8,6 +9,11 @@ async function extractText(b64: string, mime: string, name: string): Promise<str
   if (lname.endsWith('.docx') || mime.includes('wordprocessingml') || mime.includes('msword')) {
     const r = await mammoth.extractRawText({ buffer: buf })
     return r.value || ''
+  }
+
+  if (lname.endsWith('.pdf') || mime === 'application/pdf') {
+    const r = await pdfParse(buf)
+    return r.text || ''
   }
 
   if (lname.endsWith('.txt') || lname.endsWith('.md') || lname.endsWith('.csv') || mime.startsWith('text/')) {
