@@ -1004,6 +1004,152 @@ async function handleNotesFile(
 }
 
 
+// ── ParcelDocsPanel — top-level component (no brace issues) ──────────────────
+type ParcelDoc = {id:string,name:string,type:string,size:string,b64:string,usedInScore:boolean}
+type ScanState = Record<string,{scanning:boolean,text:string}>
+
+function ParcelDocsPanel({
+  parcelLink, parcelDocs, docScanResults,
+  setParcelDocs, setDocScanResults, setScreeningInput, projectId
+}: {
+  parcelLink: string
+  parcelDocs: ParcelDoc[]
+  docScanResults: ScanState
+  setParcelDocs: React.Dispatch<React.SetStateAction<ParcelDoc[]>>
+  setDocScanResults: React.Dispatch<React.SetStateAction<ScanState>>
+  setScreeningInput: React.Dispatch<React.SetStateAction<any>>
+  projectId: string
+}) {
+  const addDoc = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = e => {
+      const result = (e.target?.result as string) || ''
+      const b64 = result.includes(',') ? result.split(',')[1] : result
+      const doc: ParcelDoc = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        size: file.size > 1048576 ? (file.size/1048576).toFixed(1)+'MB' : Math.round(file.size/1024)+'KB',
+        b64,
+        usedInScore: false,
+      }
+      setParcelDocs(prev => [...prev, doc])
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const scanDoc = async (doc: ParcelDoc) => {
+    setDocScanResults(prev => ({...prev, [doc.id]: {scanning:true, text:''}}))
+    try {
+      const res = await fetch('/api/summarize', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({base64Data:doc.b64, mimeType:doc.type, fileName:doc.name, projectId, mode:'extract'})
+      })
+      const data = await res.json()
+      const text = data.summary || data.error || 'No data extracted'
+      setDocScanResults(prev => ({...prev, [doc.id]: {scanning:false, text}}))
+      if (text.toLowerCase().includes('lot size') || text.toLowerCase().includes('acres')) {
+        const m = text.match(/(\d+\.?\d*)\s*acres/i)
+        if (m) setScreeningInput((s: any) => ({...s, lot: m[1]}))
+      }
+      if (text.toLowerCase().includes('zoning')) {
+        const m = text.match(/zoning[:\s]+([A-Z][A-Z]?[A-Z]?-?\d?\d?[A-Z]?)/i)
+        if (m) setScreeningInput((s: any) => ({...s, zoning: m[1]}))
+      }
+    } catch(e: any) {
+      setDocScanResults(prev => ({...prev, [doc.id]: {scanning:false, text:'Scan failed: '+e.message}}))
+    }
+  }
+
+  const extColors: Record<string,{bg:string,tc:string}> = {
+    PDF:{bg:'#FCEBEB',tc:'#791F1F'}, DOCX:{bg:'#E6F1FB',tc:'#0C447C'},
+    DWG:{bg:'#FAEEDA',tc:'#633806'}, TXT:{bg:'#EAF3DE',tc:'#27500A'},
+    JPG:{bg:'#EEEDFE',tc:'#3C3489'}, PNG:{bg:'#EEEDFE',tc:'#3C3489'},
+  }
+
+  return (
+    <div style={{width:272,background:'#fff',borderLeft:'0.5px solid rgba(0,0,0,0.1)',padding:14,flexShrink:0,overflowY:'auto',display:'flex',flexDirection:'column'}}>
+      <div style={{fontWeight:500,fontSize:12,marginBottom:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span>📎 Parcel Documents</span>
+        <span style={{fontSize:10,color:'#aaa',fontWeight:400}}>{parcelDocs.length} file{parcelDocs.length!==1?'s':''}</span>
+      </div>
+
+      {parcelLink&&(
+        <div style={{background:'#E6F1FB',borderRadius:8,padding:'8px 10px',marginBottom:10,fontSize:11}}>
+          <div style={{color:'#888',marginBottom:2,fontSize:10}}>Saved listing URL</div>
+          <a href={parcelLink} target="_blank" rel="noopener noreferrer"
+            style={{color:'#185FA5',wordBreak:'break-all',textDecoration:'none',fontSize:11}}>
+            {parcelLink.length>50?parcelLink.slice(0,50)+'...':parcelLink}
+          </a>
+        </div>
+      )}
+
+      <div
+        style={{border:'1.5px dashed rgba(0,0,0,0.15)',borderRadius:8,padding:'14px 10px',textAlign:'center',cursor:'pointer',background:'#fafaf8',marginBottom:10}}
+        onClick={()=>document.getElementById('parcel-doc-upload')?.click()}
+        onDragOver={e=>e.preventDefault()}
+        onDrop={e=>{e.preventDefault();Array.from(e.dataTransfer.files).forEach(addDoc)}}>
+        <div style={{fontSize:20,marginBottom:4}}>📄</div>
+        <div style={{fontWeight:500,fontSize:11,color:'#555',marginBottom:2}}>Drop files or click to upload</div>
+        <div style={{fontSize:10,color:'#aaa'}}>Surveys · Arch sets · Ordinances · Reports</div>
+        <input id="parcel-doc-upload" type="file" multiple accept=".pdf,.docx,.txt,.md,.dwg,.jpg,.png" style={{display:'none'}}
+          onChange={e=>{Array.from(e.target.files||[]).forEach(addDoc);(e.target as HTMLInputElement).value=''}}/>
+      </div>
+
+      {parcelDocs.length===0&&(
+        <div style={{fontSize:11,color:'#aaa',textAlign:'center',padding:'8px 0'}}>No documents yet</div>
+      )}
+
+      {parcelDocs.map(doc=>{
+        const scan = docScanResults[doc.id]
+        const ext = (doc.name.split('.').pop()||'').toUpperCase()
+        const ec = extColors[ext]||{bg:'#f0f0ec',tc:'#555'}
+        return (
+          <div key={doc.id} style={{background:'#f5f4f0',borderRadius:8,padding:'9px 10px',marginBottom:8,border:'0.5px solid '+(doc.usedInScore?'#534AB7':'rgba(0,0,0,0.06)')}}>
+            <div style={{display:'flex',alignItems:'flex-start',gap:6,marginBottom:6}}>
+              <span style={{fontSize:9,fontWeight:500,padding:'2px 5px',borderRadius:4,background:ec.bg,color:ec.tc,flexShrink:0}}>{ext||'FILE'}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:11,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{doc.name}</div>
+                <div style={{fontSize:10,color:'#aaa'}}>{doc.size}</div>
+              </div>
+              <button onClick={()=>setParcelDocs(prev=>prev.filter(d=>d.id!==doc.id))}
+                style={{background:'transparent',border:'none',cursor:'pointer',color:'#ccc',fontSize:12,padding:0,flexShrink:0,lineHeight:1}}>✕</button>
+            </div>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <label style={{display:'flex',alignItems:'center',gap:5,fontSize:10,color:doc.usedInScore?'#534AB7':'#888',cursor:'pointer'}}>
+                <input type="checkbox" checked={doc.usedInScore}
+                  onChange={()=>setParcelDocs(prev=>prev.map(d=>d.id===doc.id?{...d,usedInScore:!d.usedInScore}:d))}
+                  style={{accentColor:'#534AB7',width:12,height:12}}/>
+                Use in score
+              </label>
+              <button onClick={()=>scanDoc(doc)} disabled={scan?.scanning}
+                style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:'0.5px solid rgba(0,0,0,0.15)',background:scan?.scanning?'#f0f0ec':'#fff',cursor:scan?.scanning?'default':'pointer',color:'#555'}}>
+                {scan?.scanning?'Scanning...':'AI Scan'}
+              </button>
+            </div>
+            {scan?.text&&!scan.scanning&&(
+              <div style={{marginTop:6,background:'#fff',borderRadius:6,padding:'7px 9px',fontSize:10,color:'#333',lineHeight:1.5,border:'0.5px solid rgba(83,74,183,0.2)',maxHeight:110,overflowY:'auto'}}>
+                {scan.text}
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {parcelDocs.some(d=>d.usedInScore)&&(
+        <div style={{marginTop:4,background:'#EEEDFE',borderRadius:8,padding:'8px 10px',fontSize:11,color:'#3C3489'}}>
+          <div style={{fontWeight:500,marginBottom:3}}>Cross-referenced in score</div>
+          {parcelDocs.filter(d=>d.usedInScore).map(d=>(
+            <div key={d.id} style={{fontSize:10,color:'#534AB7',marginTop:2}}>{'- '+d.name}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 export default function MDOSApp() {
   const [role, setRole] = useState<Role>('admin')
   const [view, setView] = useState<View>('dashboard')
@@ -1018,6 +1164,9 @@ export default function MDOSApp() {
     Object.fromEntries(NOTIF_EVENTS.map(e => [e.key, {teams:e.teams, email:e.email}]))
   )
   const [screeningResult, setScreeningResult] = useState<any>(null)
+  const [parcelLink, setParcelLink] = useState('')
+  const [parcelDocs, setParcelDocs] = useState<{id:string,name:string,type:string,size:string,b64:string,usedInScore:boolean}[]>([])
+  const [docScanResults, setDocScanResults] = useState<Record<string,{scanning:boolean,text:string}>>({})
   const [screeningInput, setScreeningInput] = useState({
     address: '2421 S 5th St, Austin TX 78704',
     state: 'TX', market: 'austin', goal: 'RESIDENTIAL_SFH',
@@ -1685,7 +1834,10 @@ export default function MDOSApp() {
               <div>
                 <div style={{fontWeight:500,fontSize:14}}>{screeningResult.overall==='PASS'?'Clears Feasibility':screeningResult.overall==='FLAG'?screeningResult.autoRej?'Auto-rejected':'Flagged for MDI Review':'Auto-rejected'}</div>
                 <div style={{fontSize:11,color:'#888',marginTop:3}}>{screeningResult.passes} pass · {screeningResult.flags} flag · {screeningResult.fails} fail</div>
-                <div style={{marginTop:6,display:'flex',gap:4,flexWrap:'wrap'}}>
+                {parcelDocs.filter(d=>d.usedInScore).length>0&&(
+                 <div style={{fontSize:10,color:'#534AB7',marginTop:4}}>📎 {parcelDocs.filter(d=>d.usedInScore).length} doc(s) cross-referenced</div>
+               )}
+               <div style={{marginTop:6,display:'flex',gap:4,flexWrap:'wrap'}}>
                   {[screeningInput.method,screeningInput.state,screeningInput.goal.split('_')[0]].map(t=>(
                     <span key={t} style={{fontSize:10,padding:'2px 7px',borderRadius:8,background:'#E1F5EE',color:'#085041'}}>{t}</span>
                   ))}
@@ -1724,6 +1876,12 @@ export default function MDOSApp() {
           </>
         )}
       </div>
+      <ParcelDocsPanel
+        parcelLink={parcelLink} parcelDocs={parcelDocs}
+        docScanResults={docScanResults} setParcelDocs={setParcelDocs}
+        setDocScanResults={setDocScanResults} setScreeningInput={setScreeningInput}
+        projectId={screeningInput.address||'parcel'}
+      />
     </div>
   )
 
