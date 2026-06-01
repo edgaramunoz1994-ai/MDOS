@@ -1,4 +1,4 @@
-import MDOSApp from '@/components/MDOSApp'
+import MDOSAppV2 from '@/components/MDOSAppV2'
 export default function DashboardPage() {
-  return <MDOSApp />
+  return <MDOSAppV2 />
 }
