@@ -1,45 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import mammoth from 'mammoth'
 
-async function extractText(base64Data: string, mimeType: string, fileName: string): Promise<string> {
-  const buffer = Buffer.from(base64Data, 'base64')
+async function extractText(b64: string, mime: string, name: string): Promise<string> {
+  const buf = Buffer.from(b64, 'base64')
+  const lname = name.toLowerCase()
 
-  // DOCX — use mammoth
-  if (fileName.endsWith('.docx') || mimeType.includes('wordprocessingml') || mimeType.includes('msword')) {
-    const result = await mammoth.extractRawText({ buffer })
-    return result.value || ''
+  if (lname.endsWith('.docx') || mime.includes('wordprocessingml') || mime.includes('msword')) {
+    const r = await mammoth.extractRawText({ buffer: buf })
+    return r.value || ''
   }
 
-  // Plain text, markdown, CSV — decode as UTF-8
-  if (
-    mimeType.startsWith('text/') ||
-    fileName.endsWith('.txt') ||
-    fileName.endsWith('.md') ||
-    fileName.endsWith('.csv')
-  ) {
-    return buffer.toString('utf-8')
+  if (lname.endsWith('.txt') || lname.endsWith('.md') || lname.endsWith('.csv') || mime.startsWith('text/')) {
+    return buf.toString('utf-8')
   }
 
-  // PDF — extract text layer (basic, no binary parsing library needed)
-  if (mimeType === 'application/pdf' || fileName.endsWith('.pdf')) {
-    const text = buffer.toString('latin1')
-    // Extract readable text between PDF stream markers
-    const chunks: string[] = []
-    const regex = /BT[\s\S]*?ET/g
-    let match
-    while ((match = regex.exec(text)) !== null) {
-      const block = match[0]
-      const strings = block.match(/\(([^)]{2,})\)/g) || []
-      strings.forEach(s => chunks.push(s.slice(1, -1)))
+  const raw = buf.toString('utf-8')
+  let out = ''
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i)
+    if ((c >= 32 && c <= 126) || c === 10 || c === 13 || c === 9) {
+      out += raw[i]
+    } else {
+      out += ' '
     }
-    const extracted = chunks.join(' ').replace(/\n/g, ' ').replace(/\r/g, '').trim()
-    return extracted.length > 100 ? extracted : buffer.toString('utf-8').replace(/[^ -~
-	]/g, ' ').replace(/\s{3,}/g, ' ').trim()
   }
-
-  // Fallback — strip non-printable characters
-  return buffer.toString('utf-8').replace(/[^ -~
-	]/g, ' ').replace(/\s{3,}/g, ' ').trim()
+  return out.split('   ').filter(Boolean).join(' ').trim()
 }
 
 export async function POST(req: NextRequest) {
@@ -53,20 +38,20 @@ export async function POST(req: NextRequest) {
     let transcript = ''
     try {
       transcript = await extractText(base64Data, mimeType || '', fileName || '')
-    } catch (parseErr: any) {
-      return NextResponse.json({ error: 'Could not parse file: ' + parseErr.message }, { status: 422 })
+    } catch (e: any) {
+      return NextResponse.json({ error: 'Could not parse file: ' + e.message }, { status: 422 })
     }
 
     if (!transcript || transcript.trim().length < 20) {
-      return NextResponse.json({ error: 'File appears empty or unreadable. Please try a .txt or .md file.' }, { status: 422 })
+      return NextResponse.json({ error: 'File appears empty or unreadable. Try a .txt or .md file.' }, { status: 422 })
     }
 
     const suffix = ' [transcript truncated]'
     const truncated = transcript.length > 12000 ? transcript.slice(0, 12000) + suffix : transcript
 
-    const systemPrompt = [
+    const sys = [
       'You are a construction project assistant for Moderne Development Inc (MDI).',
-      'Summarize the following meeting transcript into a concise project communication log entry.',
+      'Summarize the meeting transcript into a concise project communication log entry.',
       'Format: 2-3 sentence overview, Key decisions (max 4 bullets),',
       'Action items with owner if mentioned (max 4 bullets), Blockers or risks.',
       'Under 250 words. No preamble. Start directly with the summary.',
@@ -74,7 +59,7 @@ export async function POST(req: NextRequest) {
 
     const userMsg = 'Project: ' + (projectId || 'unknown') + ' --- Transcript: ' + truncated
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -84,30 +69,25 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1000,
-        system: systemPrompt,
+        system: sys,
         messages: [{ role: 'user', content: userMsg }]
       })
     })
 
-    if (!response.ok) {
-      const err = await response.json()
-      return NextResponse.json(
-        { error: err?.error?.message || ('API error ' + response.status) },
-        { status: response.status }
-      )
+    if (!res.ok) {
+      const err = await res.json()
+      return NextResponse.json({ error: err?.error?.message || ('API error ' + res.status) }, { status: res.status })
     }
 
-    const data = await response.json()
+    const data = await res.json()
     const summary = data.content?.find((b: any) => b.type === 'text')?.text || ''
 
-    if (!summary) {
-      return NextResponse.json({ error: 'No summary returned' }, { status: 500 })
-    }
+    if (!summary) return NextResponse.json({ error: 'No summary returned' }, { status: 500 })
 
     return NextResponse.json({ summary })
 
   } catch (err: any) {
-    console.error('[summarize] error:', err)
+    console.error('[summarize]', err)
     return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 })
   }
 }
