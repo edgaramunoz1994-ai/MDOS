@@ -1477,7 +1477,7 @@ export default function MDOSApp() {
     const zoning = screeningInput.zoning
     const method = screeningInput.method
 
-    const costPerUnit: Record<string,number> = { 3DCP:285000, SCIP:310000, MODULAR:295000, TUNNEL_FORM:340000, HYBRID:300000 }
+    const costPerUnit: Record<string,number> = { '3DCP':285000, SCIP:310000, MODULAR:295000, TUNNEL_FORM:340000, HYBRID:300000 }
     const totalEst = (costPerUnit[method] || 300000) * units
     const budgetMid = (bmin + bmax) / 2
 
