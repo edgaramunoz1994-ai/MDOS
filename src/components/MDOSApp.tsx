@@ -1521,7 +1521,7 @@ export default function MDOSApp() {
     <div className="sidebar flex flex-col" style={{width:220,flexShrink:0,minHeight:'100vh'}}>
       <div style={{padding:'18px 16px 14px',borderBottom:'0.5px solid rgba(255,255,255,0.1)'}}>
         <div style={{fontSize:16,fontWeight:500,color:'#fff'}}>MD<span style={{color:'var(--mdi-gold)'}}>OS</span></div>
-        <div style={{fontSize:10,letterSpacing:'0.12em',color:'rgba(255,255,255,0.4)',textTransform:'uppercase',marginTop:2}}>Moderne Development, Inc.</div>
+        <div style={{fontSize:10,letterSpacing:'0.12em',color:'rgba(255,255,255,0.4)',textTransform:'uppercase',marginTop:2}}>{user.role}</div>
       </div>
       {role==='admin' && (
         <div style={{padding:'10px 12px',borderBottom:'0.5px solid rgba(255,255,255,0.1)'}}>
