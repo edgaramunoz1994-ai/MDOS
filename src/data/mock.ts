@@ -283,10 +283,10 @@ export const ACTIVITY = [
 ]
 
 export const USERS = {
-  admin:   { name: 'Edgar Munoz',   initials: 'EM', role: 'Moderne Development, Inc.', email: 'edgar@mdi.build' },
-  team:    { name: 'Paul Cejas',    initials: 'PC', role: 'Moderne Development, Inc.', email: 'paul@mdi.build' },
-  partner: { name: 'Daniel Brown',  initials: 'DB', role: 'Modstone LLC',              email: 'daniel@brownstone.com' },
-  investor:{ name: 'Richard B.',    initials: 'RB', role: 'Investor',         email: 'richard@wharton.edu' },
+  admin:   { name: 'Edgar Munoz',   initials: 'EM', entity: 'Moderne Development, Inc.', role: 'Admin',            email: 'edgar@mdi.build' },
+  team:    { name: 'Paul Cejas',    initials: 'PC', entity: 'Moderne Development, Inc.', role: 'MDI Member',       email: 'paul@mdi.build' },
+  partner: { name: 'Daniel Brown',  initials: 'DB', entity: 'Modstone LLC',              role: 'JV Alpha User',    email: 'daniel@brownstone.com' },
+  investor:{ name: 'Richard B.',    initials: 'RB', entity: 'Investor',                  role: 'Project Investor',         email: 'richard@wharton.edu' },
 }
 
 export const NOTIF_EVENTS = [
