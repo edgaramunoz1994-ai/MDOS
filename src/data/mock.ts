@@ -283,9 +283,9 @@ export const ACTIVITY = [
 ]
 
 export const USERS = {
-  admin:   { name: 'Edgar Munoz',   initials: 'EM', role: 'MDI Admin',        email: 'edgar@mdi.build' },
-  team:    { name: 'Paul Cejas',    initials: 'PC', role: 'MDI Team Member',  email: 'paul@mdi.build' },
-  partner: { name: 'Daniel Brown',  initials: 'DB', role: 'Alpha JV Partner', email: 'daniel@brownstone.com' },
+  admin:   { name: 'Edgar Munoz',   initials: 'EM', role: 'Moderne Development, Inc.', email: 'edgar@mdi.build' },
+  team:    { name: 'Paul Cejas',    initials: 'PC', role: 'Moderne Development, Inc.', email: 'paul@mdi.build' },
+  partner: { name: 'Daniel Brown',  initials: 'DB', role: 'Modstone LLC',              email: 'daniel@brownstone.com' },
   investor:{ name: 'Richard B.',    initials: 'RB', role: 'Investor',         email: 'richard@wharton.edu' },
 }
 
