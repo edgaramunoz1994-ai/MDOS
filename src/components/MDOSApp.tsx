@@ -606,35 +606,75 @@ function ScheduleBuilder({projectName}: {projectName:string}) {
           <div style={{background:'#f0f7f4',border:'0.5px solid #b8ddd0',borderRadius:8,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
             <div>
               <div style={{fontSize:12,fontWeight:500,color:'var(--mdi-green)'}}>📄 Schedule Template</div>
-              <div style={{fontSize:11,color:'#888',marginTop:2}}>Columns: Phase, Task, StartDay, Duration, Status, Progress, Critical</div>
+              <div style={{fontSize:11,color:'#888',marginTop:2}}>Clarksville 3DCP Master Schedule — 59 tasks · 5 phases · 170 day timeline</div>
             </div>
             <button className="btn btn-primary" style={{fontSize:11,flexShrink:0}}
               onClick={()=>{
                 const csv = [
                   'Phase,Task,StartDay,Duration,Status,Progress,Critical',
-                  'Pre-Construction,Site Survey,0,2,Critical,0,true',
-                  'Pre-Construction,Permit Application,2,30,Critical,0,true',
-                  'Pre-Construction,Utility Clearance,2,14,Scheduled w/ Sub,0,false',
-                  'Foundation,Excavation,32,3,Scheduled w/ Sub,0,false',
-                  'Foundation,Formwork,35,2,Critical,0,true',
-                  'Foundation,Slab Pour,37,1,Critical,0,true',
-                  'Foundation,Slab Curing,38,5,Critical,0,true',
-                  'Framing,Wall Framing,43,5,Critical,0,true',
-                  'Framing,Roof Structure,48,3,Critical,0,true',
-                  'Mechanical/Electrical/Plumbing,Rough-in Plumbing,43,4,Scheduled w/ Sub,0,false',
-                  'Mechanical/Electrical/Plumbing,Rough-in Electrical,43,4,Critical,0,true',
-                  'Mechanical/Electrical/Plumbing,HVAC Install,51,3,Scheduled w/ Sub,0,false',
-                  'Interior,Drywall,54,4,Critical,0,true',
-                  'Interior,Painting,58,3,Critical,0,true',
-                  'Interior,Flooring,61,3,Critical,0,true',
-                  'Final & Closeout,Punch List,64,3,Scheduled w/ Sub,0,false',
-                  'Final & Closeout,Final Inspection,67,1,Inspection,0,false',
-                  'Final & Closeout,Certificate of Occupancy,68,3,Goal,0,true',
+                  'PRE-CONSTRUCTION,Finalize Construction Documents,0,2,Complete,100,false',
+                  'PRE-CONSTRUCTION,Design,0,62,Complete,100,false',
+                  'PRE-CONSTRUCTION,Well Permit,62,30,Critical,20,true',
+                  'PRE-CONSTRUCTION,Truss Engineering,0,30,Complete,100,false',
+                  'PRE-CONSTRUCTION,Contractor Authorization Forms,0,1,Complete,100,false',
+                  'PRE-CONSTRUCTION,Change of Contractor Form,0,1,Complete,100,false',
+                  'PRE-CONSTRUCTION,Contractor BASS Registration,0,7,Complete,100,false',
+                  'PRE-CONSTRUCTION,Residential Permit Approval,0,106,Complete,100,false',
+                  'PRE-CONSTRUCTION,FPL Utility Easement,0,1,Critical,70,true',
+                  'PRE-CONSTRUCTION,Order Materials,0,14,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Install Permit Box & Silt Fence,108,1,Most Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Earthwork Fill & Grade,109,3,Scheduled w/ Sub,10,false',
+                  'HORIZONTAL CONSTRUCTION,Gravel Fill,110,2,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Compaction Test 1,112,1,Inspection,0,false',
+                  'HORIZONTAL CONSTRUCTION,Survey Mark Corners of Slab,112,1,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Formwork,113,1,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Plumbing Rough-In,114,1,Scheduled w/ Sub,0,false',
+                  'HORIZONTAL CONSTRUCTION,Vapor Barrier,115,1,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Slab Reinforcement,115,1,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Electrical Rough-In,116,1,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Pre-pour Slab Inspection,117,1,Inspection,0,false',
+                  'HORIZONTAL CONSTRUCTION,Slab Pour,118,1,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Slab Curing Period,118,5,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Septic System,159,7,Critical,20,true',
+                  'HORIZONTAL CONSTRUCTION,Well System Install,160,2,Critical,0,true',
+                  'PRINTING,Develop G-Code,118,3,Critical,0,true',
+                  'PRINTING,Test G-Code,119,2,Critical,0,true',
+                  'PRINTING,Transport Printing Equipment to Site,123,1,Critical,0,true',
+                  'PRINTING,Print Equipment Setup,123,1,Critical,0,true',
+                  'PRINTING,Print Duration,123,14,Critical,0,true',
+                  'PRINTING,Print Cure Period,137,3,Critical,0,true',
+                  'PRINTING,3D Wall Sealant,137,1,Critical,0,true',
+                  'SHELL,Wall Cutouts,123,14,Critical,0,true',
+                  'SHELL,Rough-in Electrical,123,14,Critical,0,true',
+                  'SHELL,Insulation (Wall Cavity),123,14,Critical,0,true',
+                  'SHELL,Seal Control Joints,137,2,Critical,0,true',
+                  'SHELL,Install Top Plate,139,1,Critical,0,true',
+                  'SHELL,Roof Truss Install,147,1,Critical,0,true',
+                  'SHELL,Roof Plywood Deck Install,148,1,Critical,0,true',
+                  'SHELL,Roof Sheathing and Shingles Install,150,1,Critical,0,true',
+                  'SHELL,Exterior Window and Door Install,151,3,Critical,0,true',
+                  'SHELL,Dry-In Inspection,153,1,Inspection,0,false',
+                  'SHELL,Exterior Painting,153,1,Critical,0,true',
+                  'CORE + MEP,Interior Framing,139,2,Critical,0,true',
+                  'CORE + MEP,HVAC Duct + Air Handler Install,154,1,Critical,0,true',
+                  'CORE + MEP,Plumbing Top Out,155,2,Critical,0,true',
+                  'CORE + MEP,Electrical Top Out,157,2,Critical,0,true',
+                  'CORE + MEP,Roof and Interior Insulation,159,1,Critical,0,true',
+                  'CORE + MEP,Open Wall Inspection,160,1,Inspection,0,false',
+                  'CORE + MEP,Drywall,161,4,Critical,0,true',
+                  'CORE + MEP,Interior Painting,165,2,Critical,0,true',
+                  'CORE + MEP,Flooring,167,2,Critical,0,true',
+                  'CORE + MEP,Cabinets and Counters,169,2,Critical,0,true',
+                  'CORE + MEP,Electrical Trim-Out,165,1,Critical,0,true',
+                  'CORE + MEP,Plumbing Trim-Out,166,1,Critical,0,true',
+                  'CORE + MEP,HVAC Trim-Out,167,1,Critical,0,true',
+                  'CORE + MEP,Power and HVAC Inspection,168,1,Inspection,0,false',
+                  'CORE + MEP,Closeout Core + MEP,170,1,Goal,0,true'
                 ].join('\n')
                 const blob = new Blob([csv], {type:'text/csv'})
                 const url = URL.createObjectURL(blob)
                 const a = document.createElement('a')
-                a.href = url; a.download = 'MDOS_Schedule_Template.csv'
+                a.href = url; a.download = 'MDOS_3DCP_Schedule_Template.csv'
                 a.click(); URL.revokeObjectURL(url)
               }}>
               ↓ Download Template
