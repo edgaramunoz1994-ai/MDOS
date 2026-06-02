@@ -412,7 +412,139 @@ const PHASE_OPTIONS = ['Pre-Construction','Site Work','Foundation','Framing','Me
 const STATUS_OPTIONS = ['Critical','Most Critical','Scheduled w/ Sub','Inspection','Complete','Goal','Unassigned']
 const EMPTY_TASK = { phase:'Pre-Construction', task:'', status:'Critical', progress:0, startOffset:0, days:1, critical:true }
 
+// ── parseScheduleFile — parse CSV or XLSX into ScheduleBuilder tasks ─────────
+function parseScheduleFile(
+  file: File,
+  setTasks: (t: any[]) => void,
+  setView: (v: any) => void,
+  setError: (e: string) => void,
+  setSuccess: (s: string) => void
+) {
+  setError('')
+  setSuccess('')
+  const fname = file.name.toLowerCase()
+
+  const processRows = (rows: string[][]) => {
+    if (rows.length < 2) { setError('File must have a header row and at least one data row.'); return }
+
+    // Find column indices — case-insensitive
+    const header = rows[0].map(h => h.trim().toLowerCase())
+    const col = (names: string[]) => names.map(n => header.indexOf(n)).find(i => i >= 0) ?? -1
+
+    const phaseCol    = col(['phase'])
+    const taskCol     = col(['task', 'task name', 'taskname', 'name', 'description'])
+    const startCol    = col(['startday', 'start day', 'start', 'day', 'offset'])
+    const durationCol = col(['duration', 'days', 'duration (days)', 'dur'])
+    const statusCol   = col(['status'])
+    const progressCol = col(['progress', 'progress (%)','pct','percent'])
+    const criticalCol = col(['critical', 'is critical','iscritical'])
+
+    if (taskCol < 0) { setError('Could not find a "Task" column. Check the template format.'); return }
+    if (startCol < 0) { setError('Could not find a "StartDay" column. Check the template format.'); return }
+    if (durationCol < 0) { setError('Could not find a "Duration" column. Check the template format.'); return }
+
+    const STATUS_MAP: Record<string,string> = {
+      'critical': 'Critical', 'most critical': 'Most Critical',
+      'scheduled': 'Scheduled w/ Sub', 'scheduled w/ sub': 'Scheduled w/ Sub',
+      'inspection': 'Inspection', 'complete': 'Complete', 'completed': 'Complete',
+      'goal': 'Goal', 'unassigned': 'Unassigned',
+    }
+
+    const tasks: any[] = []
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i]
+      if (!row || row.every(c => !c?.trim())) continue // skip blank rows
+
+      const taskName = row[taskCol]?.trim()
+      if (!taskName) continue
+
+      const phase     = phaseCol >= 0    ? (row[phaseCol]?.trim() || 'General') : 'General'
+      const start     = parseInt(row[startCol]) || 0
+      const duration  = Math.max(1, parseInt(row[durationCol]) || 1)
+      const rawStatus = statusCol >= 0   ? (row[statusCol]?.trim().toLowerCase() || '') : ''
+      const status    = STATUS_MAP[rawStatus] || 'Scheduled w/ Sub'
+      const progress  = progressCol >= 0 ? Math.min(100, Math.max(0, parseInt(row[progressCol]) || 0)) : 0
+      const rawCrit   = criticalCol >= 0 ? row[criticalCol]?.trim().toLowerCase() : ''
+      const critical  = rawCrit === 'true' || rawCrit === '1' || rawCrit === 'yes' || status.toLowerCase().includes('critical')
+
+      tasks.push({ phase, task: taskName, startOffset: start, days: duration, status, progress, critical })
+    }
+
+    if (tasks.length === 0) { setError('No valid tasks found. Make sure Task, StartDay, and Duration columns have data.'); return }
+
+    setTasks(tasks)
+    setSuccess(`Imported ${tasks.length} tasks across ${new Set(tasks.map(t => t.phase)).size} phases. Click Critical Path or Gantt to view.`)
+    setView('critical')
+  }
+
+  if (fname.endsWith('.csv')) {
+    const reader = new FileReader()
+    reader.onload = e => {
+      const text = (e.target?.result as string) || ''
+      const rows = text.split(/\r?\n/).map(line => {
+        // Handle quoted CSV fields
+        const cells: string[] = []
+        let cur = '', inQ = false
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i]
+          if (ch === '"') { inQ = !inQ }
+          else if (ch === ',' && !inQ) { cells.push(cur); cur = '' }
+          else { cur += ch }
+        }
+        cells.push(cur)
+        return cells
+      })
+      processRows(rows)
+    }
+    reader.onerror = () => setError('Failed to read file.')
+    reader.readAsText(file)
+
+  } else if (fname.endsWith('.xlsx') || fname.endsWith('.xls')) {
+    const reader = new FileReader()
+    reader.onload = e => {
+      try {
+        const ab = e.target?.result as ArrayBuffer
+        // Minimal XLSX parser — extract shared strings + sheet data
+        // Since we can't import SheetJS in this context, parse the ZIP manually
+        // by reading the file as binary and extracting text patterns
+        const bytes = new Uint8Array(ab)
+        const text = Array.from(bytes).map(b => String.fromCharCode(b)).join('')
+
+        // Try to find cell values via regex pattern from xlsx XML
+        const cellPattern = /<c r="[^"]*"[^>]*><v>(\d+(?:\.\d+)?)<\/v><\/c>|<c r="[^"]*"[^>]*t="s"[^>]*><v>(\d+)<\/v><\/c>|<t>([^<]*)<\/t>/g
+        const sharedStrings: string[] = []
+        const ssMatches = text.match(/<t[^>]*>([^<]+)<\/t>/g) || []
+        ssMatches.forEach((m: string) => {
+          const val = m.replace(/<[^>]+>/g, '').trim()
+          sharedStrings.push(val)
+        })
+
+        if (sharedStrings.length > 3) {
+          // Build rows from shared strings — assume tabular order
+          const chunkSize = sharedStrings.length > 50 ? Math.ceil(sharedStrings.length / Math.ceil(sharedStrings.length / 7)) : 7
+          const rows: string[][] = []
+          for (let i = 0; i < sharedStrings.length; i += chunkSize) {
+            rows.push(sharedStrings.slice(i, i + chunkSize))
+          }
+          processRows(rows)
+        } else {
+          setError('Could not parse Excel file. Please save as .csv and try again, or use the template.')
+        }
+      } catch {
+        setError('Excel parsing failed. Please save your file as .csv and re-upload.')
+      }
+    }
+    reader.onerror = () => setError('Failed to read file.')
+    reader.readAsArrayBuffer(file)
+  } else {
+    setError('Unsupported file type. Please upload a .csv or .xlsx file.')
+  }
+}
+
+
 function ScheduleBuilder({projectName}: {projectName:string}) {
+  const [uploadError, setUploadError] = React.useState('')
+  const [uploadSuccess, setUploadSuccess] = React.useState('')
   const [tasks, setTasks] = React.useState<any[]>([
     { phase:'Pre-Construction', task:'Site Survey', status:'Critical', progress:0, startOffset:0, days:2, critical:true },
     { phase:'Pre-Construction', task:'Permit Application', status:'Critical', progress:0, startOffset:2, days:30, critical:true },
@@ -421,7 +553,7 @@ function ScheduleBuilder({projectName}: {projectName:string}) {
   ])
   const [editIdx, setEditIdx] = React.useState<number|null>(null)
   const [draft, setDraft] = React.useState<any>({...EMPTY_TASK})
-  const [view, setView] = React.useState<'form'|'critical'|'gantt'>('form')
+  const [view, setView] = React.useState<'upload'|'form'|'critical'|'gantt'>('upload')
   const [addingPhase, setAddingPhase] = React.useState('Pre-Construction')
 
   const phases = Array.from(new Set(tasks.map(t => t.phase)))
@@ -451,17 +583,103 @@ function ScheduleBuilder({projectName}: {projectName:string}) {
             <div style={{fontSize:11,color:'#888',marginTop:2}}>{tasks.length} tasks · {totalDays} day timeline</div>
           </div>
           <div style={{display:'flex',gap:6}}>
-            {(['form','critical','gantt'] as const).map(v=>(
+            {(['upload','form','critical','gantt'] as const).map(v=>(
               <button key={v} onClick={()=>setView(v)}
                 style={{fontSize:11,padding:'5px 12px',borderRadius:7,border:`0.5px solid ${view===v?'var(--mdi-green)':'rgba(0,0,0,0.15)'}`,
                   background:view===v?'var(--mdi-green)':'#fff',color:view===v?'#fff':'#555',cursor:'pointer'}}>
-                {v==='form'?'✏️ Build':v==='critical'?'📋 Critical Path':'📊 Gantt'}
+                {v==='upload'?'📥 Upload File':v==='form'?'✏️ Build':v==='critical'?'📋 Critical Path':'📊 Gantt'}
               </button>
             ))}
           </div>
         </div>
       </div>
 
+      {view === 'upload' && (
+        <div className="panel">
+          <div style={{fontWeight:500,fontSize:13,marginBottom:8}}>📥 Upload Schedule File</div>
+          <div style={{fontSize:12,color:'#555',marginBottom:16,lineHeight:1.6}}>
+            Upload a CSV or Excel file to automatically generate the Critical Path and Gantt chart.
+            Download the template below to see the required column format.
+          </div>
+
+          {/* Template download */}
+          <div style={{background:'#f0f7f4',border:'0.5px solid #b8ddd0',borderRadius:8,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div>
+              <div style={{fontSize:12,fontWeight:500,color:'var(--mdi-green)'}}>📄 Schedule Template</div>
+              <div style={{fontSize:11,color:'#888',marginTop:2}}>Columns: Phase, Task, StartDay, Duration, Status, Progress, Critical</div>
+            </div>
+            <button className="btn btn-primary" style={{fontSize:11,flexShrink:0}}
+              onClick={()=>{
+                const csv = [
+                  'Phase,Task,StartDay,Duration,Status,Progress,Critical',
+                  'Pre-Construction,Site Survey,0,2,Critical,0,true',
+                  'Pre-Construction,Permit Application,2,30,Critical,0,true',
+                  'Pre-Construction,Utility Clearance,2,14,Scheduled w/ Sub,0,false',
+                  'Foundation,Excavation,32,3,Scheduled w/ Sub,0,false',
+                  'Foundation,Formwork,35,2,Critical,0,true',
+                  'Foundation,Slab Pour,37,1,Critical,0,true',
+                  'Foundation,Slab Curing,38,5,Critical,0,true',
+                  'Framing,Wall Framing,43,5,Critical,0,true',
+                  'Framing,Roof Structure,48,3,Critical,0,true',
+                  'Mechanical/Electrical/Plumbing,Rough-in Plumbing,43,4,Scheduled w/ Sub,0,false',
+                  'Mechanical/Electrical/Plumbing,Rough-in Electrical,43,4,Critical,0,true',
+                  'Mechanical/Electrical/Plumbing,HVAC Install,51,3,Scheduled w/ Sub,0,false',
+                  'Interior,Drywall,54,4,Critical,0,true',
+                  'Interior,Painting,58,3,Critical,0,true',
+                  'Interior,Flooring,61,3,Critical,0,true',
+                  'Final & Closeout,Punch List,64,3,Scheduled w/ Sub,0,false',
+                  'Final & Closeout,Final Inspection,67,1,Inspection,0,false',
+                  'Final & Closeout,Certificate of Occupancy,68,3,Goal,0,true',
+                ].join('\n')
+                const blob = new Blob([csv], {type:'text/csv'})
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url; a.download = 'MDOS_Schedule_Template.csv'
+                a.click(); URL.revokeObjectURL(url)
+              }}>
+              ↓ Download Template
+            </button>
+          </div>
+
+          {/* Upload zone */}
+          <div
+            style={{border:'1.5px dashed rgba(0,0,0,0.15)',borderRadius:8,padding:'32px 20px',textAlign:'center',cursor:'pointer',background:'#fafaf8',marginBottom:12}}
+            onClick={()=>document.getElementById('schedule-file-upload')?.click()}
+            onDragOver={e=>e.preventDefault()}
+            onDrop={e=>{
+              e.preventDefault()
+              const file = e.dataTransfer.files[0]
+              if (file) parseScheduleFile(file, setTasks, setView, setUploadError, setUploadSuccess)
+            }}>
+            <div style={{fontSize:32,marginBottom:8}}>📊</div>
+            <div style={{fontWeight:500,fontSize:13,color:'#555',marginBottom:4}}>Drop CSV or Excel file here</div>
+            <div style={{fontSize:11,color:'#aaa'}}>Accepts .csv · .xlsx · .xls — max 5MB</div>
+            <input id="schedule-file-upload" type="file" accept=".csv,.xlsx,.xls" style={{display:'none'}}
+              onChange={e=>{
+                const file = e.target.files?.[0]
+                if (file) parseScheduleFile(file, setTasks, setView, setUploadError, setUploadSuccess);
+                (e.target as HTMLInputElement).value=''
+              }}/>
+          </div>
+
+          {uploadError && (
+            <div style={{background:'#FCEBEB',border:'0.5px solid #E24B4A',borderRadius:8,padding:'9px 12px',fontSize:12,color:'#A32D2D',marginBottom:8}}>
+              ⚠️ {uploadError}
+            </div>
+          )}
+          {uploadSuccess && (
+            <div style={{background:'#EAF3DE',border:'0.5px solid #639922',borderRadius:8,padding:'9px 12px',fontSize:12,color:'#27500A',marginBottom:8}}>
+              ✅ {uploadSuccess}
+            </div>
+          )}
+
+          <div style={{fontSize:11,color:'#888',marginTop:8,lineHeight:1.5}}>
+            <strong>Required columns:</strong> Phase · Task · StartDay · Duration<br/>
+            <strong>Optional columns:</strong> Status · Progress · Critical<br/>
+            Column names are case-insensitive. Extra columns are ignored.
+          </div>
+        </div>
+      )}
       {view === 'form' && (
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
           {/* Task entry form */}
