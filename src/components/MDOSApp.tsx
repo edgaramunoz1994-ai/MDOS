@@ -500,42 +500,41 @@ function parseScheduleFile(
     reader.readAsText(file)
 
   } else if (fname.endsWith('.xlsx') || fname.endsWith('.xls')) {
-    const reader = new FileReader()
-    reader.onload = e => {
-      try {
-        const ab = e.target?.result as ArrayBuffer
-        // Minimal XLSX parser — extract shared strings + sheet data
-        // Since we can't import SheetJS in this context, parse the ZIP manually
-        // by reading the file as binary and extracting text patterns
-        const bytes = new Uint8Array(ab)
-        const text = Array.from(bytes).map(b => String.fromCharCode(b)).join('')
-
-        // Try to find cell values via regex pattern from xlsx XML
-        const cellPattern = /<c r="[^"]*"[^>]*><v>(\d+(?:\.\d+)?)<\/v><\/c>|<c r="[^"]*"[^>]*t="s"[^>]*><v>(\d+)<\/v><\/c>|<t>([^<]*)<\/t>/g
-        const sharedStrings: string[] = []
-        const ssMatches = text.match(/<t[^>]*>([^<]+)<\/t>/g) || []
-        ssMatches.forEach((m: string) => {
-          const val = m.replace(/<[^>]+>/g, '').trim()
-          sharedStrings.push(val)
-        })
-
-        if (sharedStrings.length > 3) {
-          // Build rows from shared strings — assume tabular order
-          const chunkSize = sharedStrings.length > 50 ? Math.ceil(sharedStrings.length / Math.ceil(sharedStrings.length / 7)) : 7
-          const rows: string[][] = []
-          for (let i = 0; i < sharedStrings.length; i += chunkSize) {
-            rows.push(sharedStrings.slice(i, i + chunkSize))
-          }
-          processRows(rows)
-        } else {
-          setError('Could not parse Excel file. Please save as .csv and try again, or use the template.')
-        }
-      } catch {
-        setError('Excel parsing failed. Please save your file as .csv and re-upload.')
-      }
+    // Load SheetJS dynamically then parse
+    const loadSheetJS = (): Promise<any> => {
+      return new Promise((resolve, reject) => {
+        if ((window as any).XLSX) { resolve((window as any).XLSX); return }
+        const script = document.createElement('script')
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+        script.onload = () => resolve((window as any).XLSX)
+        script.onerror = () => reject(new Error('Failed to load SheetJS'))
+        document.head.appendChild(script)
+      })
     }
-    reader.onerror = () => setError('Failed to read file.')
-    reader.readAsArrayBuffer(file)
+
+    loadSheetJS().then(XLSX => {
+      const reader = new FileReader()
+      reader.onload = e => {
+        try {
+          const ab = e.target?.result as ArrayBuffer
+          const wb = XLSX.read(ab, { type: 'array' })
+          const sheetName = wb.SheetNames[0]
+          const ws = wb.Sheets[sheetName]
+          const rawRows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+          // Filter out completely empty rows
+          const rows: string[][] = rawRows
+            .filter((row: any[]) => row.some((c: any) => String(c).trim() !== ''))
+            .map((row: any[]) => row.map((c: any) => String(c).trim()))
+          processRows(rows)
+        } catch (err: any) {
+          setError('Excel parsing failed: ' + err.message)
+        }
+      }
+      reader.onerror = () => setError('Failed to read Excel file.')
+      reader.readAsArrayBuffer(file)
+    }).catch((err: any) => {
+      setError('Could not load Excel parser. Please save as .csv and re-upload.')
+    })
   } else {
     setError('Unsupported file type. Please upload a .csv or .xlsx file.')
   }
