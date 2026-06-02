@@ -427,53 +427,111 @@ function parseScheduleFile(
   const processRows = (rows: string[][]) => {
     if (rows.length < 2) { setError('File must have a header row and at least one data row.'); return }
 
-    // Find column indices — case-insensitive
-    const header = rows[0].map(h => h.trim().toLowerCase())
+    // Find the header row — search first 15 rows
+    let headerRowIdx = 0
+    let header: string[] = []
+    for (let r = 0; r < Math.min(15, rows.length); r++) {
+      const rowLower = rows[r].map(h => (h||'').trim().toLowerCase())
+      // Match our template format OR the Clarksville Excel format
+      const hasTask = rowLower.some(h => h === 'task' || h === 'activity description' || h === 'task name')
+      if (hasTask) { headerRowIdx = r; header = rowLower; break }
+    }
+
+    // Detect Clarksville/Gantt format: "Activity Description" header
+    const isGanttFormat = header.some(h => h === 'activity description')
+
     const col = (names: string[]) => names.map(n => header.indexOf(n)).find(i => i >= 0) ?? -1
 
-    const phaseCol    = col(['phase'])
-    const taskCol     = col(['task', 'task name', 'taskname', 'name', 'description'])
-    const startCol    = col(['startday', 'start day', 'start', 'day', 'offset'])
-    const durationCol = col(['duration', 'days', 'duration (days)', 'dur'])
-    const statusCol   = col(['status'])
-    const progressCol = col(['progress', 'progress (%)','pct','percent'])
-    const criticalCol = col(['critical', 'is critical','iscritical'])
+    let phaseCol = -1, taskCol = -1, startCol = -1, durationCol = -1
+    let statusCol = -1, progressCol = -1, criticalCol = -1
 
-    if (taskCol < 0) { setError('Could not find a "Task" column. Check the template format.'); return }
-    if (startCol < 0) { setError('Could not find a "StartDay" column. Check the template format.'); return }
-    if (durationCol < 0) { setError('Could not find a "Duration" column. Check the template format.'); return }
+    if (isGanttFormat) {
+      // Clarksville Excel / Gantt format
+      taskCol     = col(['activity description'])
+      statusCol   = col(['label', 'category', 'status'])
+      progressCol = col(['progress'])
+      startCol    = col(['start'])
+      durationCol = col(['no. days', 'days', 'duration', 'no.days', 'num days'])
+    } else {
+      // Our standard template format
+      phaseCol    = col(['phase'])
+      taskCol     = col(['task', 'task name', 'taskname', 'name', 'description'])
+      startCol    = col(['startday', 'start day', 'start', 'day', 'offset'])
+      durationCol = col(['duration', 'days', 'duration (days)', 'dur', 'no. days', 'no.days'])
+      statusCol   = col(['status'])
+      progressCol = col(['progress', 'progress (%)', 'pct', 'percent'])
+      criticalCol = col(['critical', 'is critical', 'iscritical'])
+    }
+
+    if (taskCol < 0) { setError('Could not find a Task or "Activity Description" column. Download the template to see the required format.'); return }
+    if (durationCol < 0) { setError('Could not find a Duration or "No. Days" column. Check the template format.'); return }
 
     const STATUS_MAP: Record<string,string> = {
-      'critical': 'Critical', 'most critical': 'Most Critical',
+      'critical': 'Critical', 'critical item needed': 'Critical',
+      'most critical': 'Most Critical',
       'scheduled': 'Scheduled w/ Sub', 'scheduled w/ sub': 'Scheduled w/ Sub',
       'inspection': 'Inspection', 'complete': 'Complete', 'completed': 'Complete',
       'goal': 'Goal', 'unassigned': 'Unassigned',
     }
 
     const tasks: any[] = []
-    for (let i = 1; i < rows.length; i++) {
+    let currentPhase = 'General'
+    // Project start serial for Clarksville (Excel date 46296 = Oct 1 2025)
+    const PROJECT_START_SERIAL = 46296
+
+    for (let i = headerRowIdx + 1; i < rows.length; i++) {
       const row = rows[i]
-      if (!row || row.every(c => !c?.trim())) continue // skip blank rows
+      if (!row || row.every(c => !c?.trim())) continue
 
       const taskName = row[taskCol]?.trim()
       if (!taskName) continue
 
-      const phase     = phaseCol >= 0    ? (row[phaseCol]?.trim() || 'General') : 'General'
-      const start     = parseInt(row[startCol]) || 0
-      const duration  = Math.max(1, parseInt(row[durationCol]) || 1)
-      const rawStatus = statusCol >= 0   ? (row[statusCol]?.trim().toLowerCase() || '') : ''
-      const status    = STATUS_MAP[rawStatus] || 'Scheduled w/ Sub'
-      const progress  = progressCol >= 0 ? Math.min(100, Math.max(0, parseInt(row[progressCol]) || 0)) : 0
-      const rawCrit   = criticalCol >= 0 ? row[criticalCol]?.trim().toLowerCase() : ''
-      const critical  = rawCrit === 'true' || rawCrit === '1' || rawCrit === 'yes' || status.toLowerCase().includes('critical')
+      // In Gantt format, rows with no status are phase headers
+      if (isGanttFormat) {
+        const statusVal = statusCol >= 0 ? (row[statusCol]?.trim() || '') : ''
+        if (!statusVal || statusVal === '0') {
+          // This is a phase header row
+          currentPhase = taskName
+          continue
+        }
+      }
 
-      tasks.push({ phase, task: taskName, startOffset: start, days: duration, status, progress, critical })
+      const phase = phaseCol >= 0 ? (row[phaseCol]?.trim() || currentPhase) : currentPhase
+
+      // Parse start day — handle Excel date serials
+      let start = 0
+      if (startCol >= 0 && row[startCol]?.trim()) {
+        const rawStart = row[startCol].trim()
+        if (!rawStart.startsWith('=')) {
+          const num = parseFloat(rawStart)
+          if (!isNaN(num)) {
+            start = num > 1000 ? Math.max(0, Math.round(num - PROJECT_START_SERIAL)) : Math.max(0, Math.round(num))
+          }
+        }
+      }
+
+      const durRaw = durationCol >= 0 ? row[durationCol]?.trim() : ''
+      const duration = durRaw && !durRaw.startsWith('=') ? Math.max(1, parseInt(durRaw) || 1) : 1
+
+      const rawStatus = statusCol >= 0 ? (row[statusCol]?.trim().toLowerCase() || '') : ''
+      const status = STATUS_MAP[rawStatus] || 'Scheduled w/ Sub'
+
+      let progress = 0
+      if (progressCol >= 0 && row[progressCol]?.trim()) {
+        const p = parseFloat(row[progressCol])
+        progress = !isNaN(p) ? Math.min(100, Math.max(0, p <= 1 ? Math.round(p * 100) : Math.round(p))) : 0
+      }
+
+      const rawCrit = criticalCol >= 0 ? row[criticalCol]?.trim().toLowerCase() : ''
+      const critical = rawCrit === 'true' || rawCrit === '1' || rawCrit === 'yes' || status.toLowerCase().includes('critical')
+
+      tasks.push({ phase, task: taskName.replace(/^\s+/, ''), startOffset: start, days: duration, status, progress, critical })
     }
 
-    if (tasks.length === 0) { setError('No valid tasks found. Make sure Task, StartDay, and Duration columns have data.'); return }
+    if (tasks.length === 0) { setError('No valid tasks found. Make sure the file has task names and durations.'); return }
 
     setTasks(tasks)
-    setSuccess(`Imported ${tasks.length} tasks across ${new Set(tasks.map(t => t.phase)).size} phases. Click Critical Path or Gantt to view.`)
+    setSuccess('Imported ' + tasks.length + ' tasks across ' + new Set(tasks.map(t => t.phase)).size + ' phases. Click Critical Path or Gantt to view.')
     setView('critical')
   }
 
