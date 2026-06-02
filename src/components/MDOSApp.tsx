@@ -5,7 +5,7 @@ import { PROJECTS, NOTIFICATIONS, ACTIVITY, USERS, NOTIF_EVENTS, SCREENING_THRES
 
 const EMPTY_PROJECT_FORM = {
   name: '', address: '', apn: '', city: '', state: 'TX', market: 'austin',
-  goal: 'RESIDENTIAL_SFH', method: 'THREEDCP', units: '', lotAcres: '',
+  goal: 'RESIDENTIAL_SFH', method: '3DCP', units: '', lotAcres: '',
   zoning: '', budgetMin: '', budgetMax: '', partner: '', notes: '',
 }
 
@@ -112,7 +112,7 @@ function NewProjectModal({
             <>
               <NPField label="Primary Construction Method">
                 <select value={form.method} onChange={e=>onField('method',e.target.value)}>
-                  <option value="THREEDCP">3DCP — 3D Concrete Printing</option>
+                  <option value="3DCP">3DCP — 3D Concrete Printing</option>
                   <option value="SCIP">SCIP — Structural Concrete Insulated Panel</option>
                   <option value="MODULAR">Modular</option>
                   <option value="TUNNEL_FORM">Tunnel-form</option>
@@ -651,7 +651,7 @@ function VertikaalView({screeningResult, screeningInput, onBack}: {screeningResu
 
   const passed = screeningResult?.overall === 'PASS' || screeningResult?.overall === 'FLAG'
   const address = screeningInput?.address || '—'
-  const method = screeningInput?.method || 'THREEDCP'
+  const method = screeningInput?.method || '3DCP'
   const units = parseInt(screeningInput?.units) || 1
 
   // Simulate BIM generation progress
@@ -1390,7 +1390,7 @@ export default function MDOSApp() {
   const [screeningInput, setScreeningInput] = useState({
     address: '2421 S 5th St, Austin TX 78704',
     state: 'TX', market: 'austin', goal: 'RESIDENTIAL_SFH',
-    method: 'THREEDCP', lot: '0.18', units: '4',
+    method: '3DCP', lot: '0.18', units: '4',
     bmin: '1.5', bmax: '4.5', zoning: 'SF-3',
   })
   const [uploadFlash, setUploadFlash] = useState(false)
@@ -1477,7 +1477,7 @@ export default function MDOSApp() {
     const zoning = screeningInput.zoning
     const method = screeningInput.method
 
-    const costPerUnit: Record<string,number> = { THREEDCP:285000, SCIP:310000, MODULAR:295000, TUNNEL_FORM:340000, HYBRID:300000 }
+    const costPerUnit: Record<string,number> = { 3DCP:285000, SCIP:310000, MODULAR:295000, TUNNEL_FORM:340000, HYBRID:300000 }
     const totalEst = (costPerUnit[method] || 300000) * units
     const budgetMid = (bmin + bmax) / 2
 
@@ -2089,7 +2089,7 @@ export default function MDOSApp() {
         </FormSection>
         <FormSection title="Construction Method">
           <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-            {[['THREEDCP','3DCP'],['SCIP','SCIP'],['MODULAR','Modular'],['TUNNEL_FORM','Tunnel-form']].map(([v,l])=>(
+            {[['3DCP','3DCP'],['SCIP','SCIP'],['MODULAR','Modular'],['TUNNEL_FORM','Tunnel-form']].map(([v,l])=>(
               <div key={v} onClick={()=>setScreeningInput(s=>({...s,method:v}))} style={{fontSize:11,padding:'3px 9px',border:`0.5px solid ${screeningInput.method===v?'var(--mdi-green)':'rgba(0,0,0,0.15)'}`,borderRadius:10,cursor:'pointer',background:screeningInput.method===v?'var(--mdi-green)':'#fff',color:screeningInput.method===v?'#fff':'#666'}}>{l}</div>
             ))}
           </div>
@@ -2286,7 +2286,7 @@ export default function MDOSApp() {
       market: newProjectForm.city + (newProjectForm.city ? ', ' : '') + newProjectForm.state,
       state: newProjectForm.state,
       goal: newProjectForm.goal,
-      method: newProjectForm.method === 'THREEDCP' ? '3DCP' : newProjectForm.method === 'SCIP' ? 'SCIP' : newProjectForm.method === 'MODULAR' ? 'Modular' : 'Tunnel-form',
+      method: newProjectForm.method === '3DCP' ? '3DCP' : newProjectForm.method === 'SCIP' ? 'SCIP' : newProjectForm.method === 'MODULAR' ? 'Modular' : 'Tunnel-form',
       vendor: 'TBD',
       status: 'SCREENING',
       pct: 0,
