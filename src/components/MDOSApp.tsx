@@ -2222,7 +2222,284 @@ export default function MDOSApp() {
   }
 
 
-  const BimTab = ({p}:{p:typeof PROJECTS[0]}) => (
+
+// ── STL3DViewer — Three.js WebGL viewer for STL files ────────────────────────
+// Loads Three.js + STLLoader via CDN, renders with orbit/zoom/pan controls
+// Accepts either a URL (for S3-hosted files) or raw ArrayBuffer (drag-dropped)
+
+function STL3DViewer({url, filename, onClose}: {url?: string, filename: string, onClose: () => void}) {
+  const mountRef = React.useRef<HTMLDivElement>(null)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  const [stats, setStats] = React.useState<{triangles: number, size: string} | null>(null)
+  const [wireframe, setWireframe] = React.useState(false)
+  const [viewMode, setViewMode] = React.useState<'solid'|'wireframe'|'xray'>('solid')
+
+  // Load Three.js + STLLoader via CDN then init scene
+  React.useEffect(() => {
+    if (!mountRef.current) return
+    let animId: number
+    let renderer: any
+
+    const loadThree = (): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        if ((window as any)._THREE) { resolve(); return }
+        const s = document.createElement('script')
+        s.src = 'https://unpkg.com/three@0.160.0/build/three.min.js'
+        s.onload = () => resolve()
+        s.onerror = reject
+        document.head.appendChild(s)
+      })
+    }
+
+    const loadSTLLoader = (): Promise<any> => {
+      return new Promise((resolve, reject) => {
+        if ((window as any)._threeSTL) { resolve((window as any)._threeSTL); return }
+        const s = document.createElement('script')
+        s.src = 'https://unpkg.com/three@0.160.0/examples/js/loaders/STLLoader.js'
+        s.onload = () => { (window as any)._threeSTL = (window as any).THREE.STLLoader; resolve((window as any)._threeSTL) }
+        s.onerror = reject
+        document.head.appendChild(s)
+      })
+    }
+
+    const loadOrbit = (): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script')
+        s.src = 'https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js'
+        s.onload = () => resolve()
+        s.onerror = reject
+        document.head.appendChild(s)
+      })
+    }
+
+    const initScene = (geometry: any) => {
+      if (!mountRef.current) return
+      const THREE = (window as any).THREE
+      void ((window as any)._THREE = THREE)
+
+      const container = mountRef.current
+      const w = container.clientWidth || 560
+      const h = 380
+
+      // Scene setup
+      const scene = new THREE.Scene()
+      scene.background = new THREE.Color(0x1a1a1a)
+
+      // Camera
+      const camera = new THREE.PerspectiveCamera(45, w / h, 0.01, 10000)
+
+      // Renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true })
+      renderer.setSize(w, h)
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+      renderer.shadowMap.enabled = true
+      container.innerHTML = ''
+      container.appendChild(renderer.domElement)
+
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5)
+      scene.add(ambientLight)
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1.2)
+      dirLight.position.set(5, 10, 5)
+      dirLight.castShadow = true
+      scene.add(dirLight)
+      const fillLight = new THREE.DirectionalLight(0x88aaff, 0.4)
+      fillLight.position.set(-5, -2, -5)
+      scene.add(fillLight)
+
+      // Grid
+      const gridHelper = new THREE.GridHelper(200, 20, 0x333333, 0x222222)
+      scene.add(gridHelper)
+
+      // Fit geometry to view
+      geometry.computeBoundingBox()
+      const box = geometry.boundingBox
+      const center = new THREE.Vector3()
+      box.getCenter(center)
+      const size = new THREE.Vector3()
+      box.getSize(size)
+      const maxDim = Math.max(size.x, size.y, size.z)
+      const fov = camera.fov * (Math.PI / 180)
+      let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 2
+
+      // Center the geometry
+      geometry.translate(-center.x, -center.y + size.z * 0.1, -center.z)
+      gridHelper.position.y = -size.z * 0.4
+
+      camera.position.set(cameraZ * 0.7, cameraZ * 0.5, cameraZ * 0.7)
+      camera.near = maxDim / 1000
+      camera.far = maxDim * 100
+      camera.updateProjectionMatrix()
+
+      // Material — MDI green tint
+      const material = new THREE.MeshPhongMaterial({
+        color: 0x2E8B62,
+        specular: 0x9FE1CB,
+        shininess: 30,
+        side: THREE.DoubleSide,
+      })
+      const mesh = new THREE.Mesh(geometry, material)
+      mesh.castShadow = true
+      scene.add(mesh)
+
+      // Stats
+      const triCount = geometry.attributes.position.count / 3
+      const vol = size.x * size.y * size.z
+      setStats({
+        triangles: Math.round(triCount),
+        size: `${size.x.toFixed(1)} × ${size.y.toFixed(1)} × ${size.z.toFixed(1)}`
+      })
+
+      // Orbit controls
+      const OrbitControls = (window as any).THREE.OrbitControls
+      const controls = new OrbitControls(camera, renderer.domElement)
+      controls.enableDamping = true
+      controls.dampingFactor = 0.05
+      controls.screenSpacePanning = false
+      controls.minDistance = maxDim * 0.1
+      controls.maxDistance = maxDim * 20
+
+      // Store refs for toggle buttons
+      ;(window as any)._mdosSTLScene = { mesh, material, THREE }
+
+      // Resize handler
+      const onResize = () => {
+        if (!container) return
+        const nw = container.clientWidth
+        camera.aspect = nw / h
+        camera.updateProjectionMatrix()
+        renderer.setSize(nw, h)
+      }
+      window.addEventListener('resize', onResize)
+
+      // Render loop
+      const animate = () => {
+        animId = requestAnimationFrame(animate)
+        controls.update()
+        renderer.render(scene, camera)
+      }
+      animate()
+      setLoading(false)
+    }
+
+    const run = async () => {
+      try {
+        await loadThree()
+        await loadSTLLoader()
+        await loadOrbit()
+        const THREE = (window as any).THREE
+        const loader = new THREE.STLLoader()
+
+        if (url) {
+          loader.load(
+            url,
+            (geometry: any) => initScene(geometry),
+            undefined,
+            (err: any) => setError('Could not load STL: ' + err.message)
+          )
+        } else {
+          setError('No STL URL provided. Upload an STL file to view it here.')
+          setLoading(false)
+        }
+      } catch (e: any) {
+        setError('Could not load 3D viewer: ' + e.message)
+        setLoading(false)
+      }
+    }
+
+    run()
+
+    return () => {
+      cancelAnimationFrame(animId)
+      if (renderer) renderer.dispose()
+    }
+  }, [url])
+
+  // Toggle view mode
+  React.useEffect(() => {
+    const scene = (window as any)._mdosSTLScene
+    if (!scene) return
+    const { mesh, material, THREE } = scene
+    if (viewMode === 'wireframe') {
+      material.wireframe = true
+      material.transparent = false
+      material.opacity = 1
+    } else if (viewMode === 'xray') {
+      material.wireframe = false
+      material.transparent = true
+      material.opacity = 0.3
+    } else {
+      material.wireframe = false
+      material.transparent = false
+      material.opacity = 1
+    }
+    material.needsUpdate = true
+  }, [viewMode])
+
+  return (
+    <div style={{background:'#111',borderRadius:10,overflow:'hidden',border:'0.5px solid rgba(255,255,255,0.1)'}}>
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 14px',background:'#1a1a1a',borderBottom:'0.5px solid rgba(255,255,255,0.08)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontSize:14}}>📦</span>
+          <span style={{fontSize:12,fontWeight:500,color:'#fff'}}>{filename}</span>
+          {stats && <span style={{fontSize:10,color:'#9FE1CB',background:'rgba(30,100,70,0.4)',padding:'2px 8px',borderRadius:8}}>{stats.triangles.toLocaleString()} triangles · {stats.size} mm</span>}
+        </div>
+        <div style={{display:'flex',gap:6,alignItems:'center'}}>
+          {(['solid','wireframe','xray'] as const).map(m => (
+            <button key={m} onClick={()=>setViewMode(m)}
+              style={{fontSize:10,padding:'3px 9px',borderRadius:5,border:`0.5px solid ${viewMode===m?'#9FE1CB':'rgba(255,255,255,0.2)'}`,
+                background:viewMode===m?'rgba(30,100,70,0.6)':'transparent',color:viewMode===m?'#9FE1CB':'#888',cursor:'pointer'}}>
+              {m === 'solid' ? '◼ Solid' : m === 'wireframe' ? '⬡ Wireframe' : '◻ X-Ray'}
+            </button>
+          ))}
+          <button onClick={onClose}
+            style={{fontSize:11,padding:'3px 9px',borderRadius:5,border:'0.5px solid rgba(255,100,100,0.4)',background:'transparent',color:'#f88',cursor:'pointer',marginLeft:4}}>
+            ✕ Close
+          </button>
+        </div>
+      </div>
+
+      {/* Viewer canvas */}
+      <div style={{position:'relative',width:'100%',minHeight:380}}>
+        {loading && (
+          <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#1a1a1a',zIndex:2}}>
+            <div style={{fontSize:32,marginBottom:12}}>⏳</div>
+            <div style={{fontSize:12,color:'#9FE1CB'}}>Loading 3D viewer...</div>
+            <div style={{fontSize:11,color:'#555',marginTop:6}}>Initialising WebGL scene</div>
+          </div>
+        )}
+        {error && (
+          <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#1a1a1a',zIndex:2}}>
+            <div style={{fontSize:32,marginBottom:12}}>⚠️</div>
+            <div style={{fontSize:12,color:'#f88',maxWidth:300,textAlign:'center'}}>{error}</div>
+          </div>
+        )}
+        <div ref={mountRef} style={{width:'100%',height:380}}/>
+      </div>
+
+      {/* Controls hint */}
+      <div style={{padding:'8px 14px',background:'#111',borderTop:'0.5px solid rgba(255,255,255,0.06)',display:'flex',gap:16,fontSize:10,color:'#555'}}>
+        <span>🖱 Left drag — orbit</span>
+        <span>⚙ Right drag — pan</span>
+        <span>🔍 Scroll — zoom</span>
+        <span style={{marginLeft:'auto',color:'#444'}}>Three.js WebGL · No external account required</span>
+      </div>
+    </div>
+  )
+}
+
+
+  const BimTab = ({p}:{p:typeof PROJECTS[0]}) => {
+    const [activeSTL, setActiveSTL] = React.useState<{url:string,name:string}|null>(null)
+    // Demo STL URLs - replace with real S3 signed URLs in production
+    const getSTLUrl = (filename: string) => {
+      // For demo: return null (shows upload prompt)
+      // In production: return signed S3 URL for the file
+      return null as string | null
+    }
+    return (
     <div>
       <div className="panel">
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
@@ -2239,13 +2516,46 @@ export default function MDOSApp() {
             </div>
             <span style={{fontSize:10,padding:'2px 7px',borderRadius:8,background:s.active?'var(--mdi-gold-bg)':'#EAF3DE',color:s.active?'var(--mdi-gold-text)':'#3B6D11',whiteSpace:'nowrap'}}>v{s.version}{s.active?' — Active':''}</span>
             <button className="btn" style={{marginLeft:4,padding:'4px 8px'}}>↓</button>
+            <button className="btn btn-primary" style={{marginLeft:4,padding:'4px 8px',fontSize:11}}
+              onClick={()=>setActiveSTL({url: getSTLUrl(s.filename) || 'demo', name: s.filename})}>
+              👁 View 3D
+            </button>
           </div>
         ))}
         {uploadFlash && <div style={{marginTop:8,background:'#EAF3DE',borderRadius:8,padding:'8px 10px',fontSize:11,color:'#3B6D11',display:'flex',alignItems:'center',gap:6}}>✓ STL uploaded and queued for geometry parsing — downstream modules will update automatically.</div>}
-        <div style={{marginTop:10,border:'1.5px dashed rgba(0,0,0,0.15)',borderRadius:8,padding:20,textAlign:'center',color:'#aaa',cursor:'pointer',fontSize:12}} onClick={simUpload}>
-          ☁ Drop STL file here or click to upload
+        <div style={{marginTop:10,border:'1.5px dashed rgba(0,0,0,0.15)',borderRadius:8,padding:20,textAlign:'center',color:'#aaa',cursor:'pointer',fontSize:12}} onClick={()=>document.getElementById('stl-file-input')?.click()}
+          onDragOver={e=>e.preventDefault()}
+          onDrop={e=>{
+            e.preventDefault()
+            const file = e.dataTransfer.files[0]
+            if (file) { const url = URL.createObjectURL(file); setActiveSTL({url, name: file.name}) }
+          }}>
+          <input id='stl-file-input' type='file' accept='.stl,.obj' style={{display:'none'}}
+            onChange={e=>{
+              const file = e.target.files?.[0]
+              if (file) { const url = URL.createObjectURL(file); setActiveSTL({url, name: file.name}) }
+            }}/>
+          ☁ Drop STL / OBJ file here or click to upload for 3D preview
         </div>
       </div>
+      {/* 3D STL Viewer */}
+      {activeSTL && (
+        <div style={{marginBottom:12}}>
+          <STL3DViewer
+            url={activeSTL.url === 'demo' ? undefined : activeSTL.url}
+            filename={activeSTL.name}
+            onClose={()=>setActiveSTL(null)}
+          />
+        </div>
+      )}
+      {!activeSTL && (
+        <div style={{marginBottom:12,background:'#1a1a1a',borderRadius:10,padding:'20px',textAlign:'center',border:'0.5px solid rgba(255,255,255,0.08)'}}>
+          <div style={{fontSize:28,marginBottom:8}}>📐</div>
+          <div style={{fontSize:13,fontWeight:500,color:'#fff',marginBottom:4}}>3D STL Viewer</div>
+          <div style={{fontSize:11,color:'#666',marginBottom:12}}>Click "👁 View 3D" on any STL version above, or drop a file in the upload zone to preview it here</div>
+          <div style={{fontSize:10,color:'#444'}}>Powered by Three.js WebGL · Orbit · Zoom · Pan · Wireframe · X-Ray</div>
+        </div>
+      )}
       {p.bimFiles.length > 0 && (
         <div className="panel">
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
@@ -2286,7 +2596,8 @@ export default function MDOSApp() {
         </div>
       )}
     </div>
-  )
+    )
+  }
 
   const RefaxTab = ({p}:{p:typeof PROJECTS[0]}) => {
     if (!p.refax) return (
