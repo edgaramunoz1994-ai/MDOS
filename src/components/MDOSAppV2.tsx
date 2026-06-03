@@ -38,113 +38,12 @@ function fmt(n: number | null | undefined, prefix='$') {
   return prefix + n
 }
 function ModelViewer() {
-  const mountRef = React.useRef<HTMLDivElement>(null)
-  const [status, setStatus] = React.useState<'idle'|'loading'|'loaded'|'error'>('idle')
-  const [fileName, setFileName] = React.useState('')
-  const [errorMsg, setErrorMsg] = React.useState('')
-  const [mode, setMode] = React.useState<'solid'|'wire'|'xray'>('solid')
-  const meshRef = React.useRef<any>(null)
-
-  const loadFile = React.useCallback((file: File) => {
-    const ext = file.name.split('.').pop()?.toLowerCase()
-    setFileName(file.name)
-    setStatus('loading')
-    const url = URL.createObjectURL(file)
-    const getLoader = () => {
-      if (ext === 'fbx') return import('three/examples/jsm/loaders/FBXLoader.js').then(m => ({ Loader: m.FBXLoader }))
-      if (ext === 'stl') return import('three/examples/jsm/loaders/STLLoader.js').then(m => ({ Loader: m.STLLoader }))
-      if (ext === 'obj') return import('three/examples/jsm/loaders/OBJLoader.js').then(m => ({ Loader: m.OBJLoader }))
-      if (ext === 'gltf' || ext === 'glb') return import('three/examples/jsm/loaders/GLTFLoader.js').then(m => ({ Loader: m.GLTFLoader }))
-      return Promise.reject(new Error('Unsupported format: .' + ext))
-    }
-    Promise.all([
-      import('three'),
-      import('three/examples/jsm/controls/OrbitControls.js'),
-      getLoader()
-    ]).then(([THREE, { OrbitControls }, { Loader: LoaderClass }]: any[]) => {
-      const container = mountRef.current
-      if (!container) return
-      const w = container.clientWidth || 600
-      const h = 420
-      const renderer = new THREE.WebGLRenderer({ antialias: true })
-      renderer.setSize(w, h)
-      renderer.setPixelRatio(window.devicePixelRatio)
-      renderer.outputColorSpace = THREE.SRGBColorSpace
-      container.innerHTML = ''
-      container.appendChild(renderer.domElement)
-      const scene = new THREE.Scene()
-      scene.background = new THREE.Color(0x0d0d0d)
-      const camera = new THREE.PerspectiveCamera(45, w / h, 0.01, 100000)
-      const controls = new OrbitControls(camera, renderer.domElement)
-      controls.enableDamping = true
-      scene.add(new THREE.AmbientLight(0xffffff, 0.7))
-      const dir = new THREE.DirectionalLight(0xffffff, 1.2)
-      dir.position.set(10, 20, 10)
-      scene.add(dir)
-      scene.add(new THREE.GridHelper(100, 50, 0x222222, 0x1a1a1a))
-      new LoaderClass().load(url, (obj: any) => {
-        let mesh = obj.scene ?? obj
-        if (obj.isBufferGeometry) mesh = new THREE.Mesh(obj, new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.2, roughness: 0.6 }))
-        meshRef.current = mesh
-        scene.add(mesh)
-        const box = new THREE.Box3().setFromObject(mesh)
-        const center = box.getCenter(new THREE.Vector3())
-        const size = box.getSize(new THREE.Vector3())
-        const dist = Math.max(size.x, size.y, size.z) * 2
-        camera.position.set(center.x + dist * 0.6, center.y + dist * 0.5, center.z + dist * 0.8)
-        controls.target.copy(center)
-        controls.update()
-        setStatus('loaded')
-        URL.revokeObjectURL(url)
-        const animate = () => { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera) }
-        animate()
-      }, undefined, () => {
-        setErrorMsg('Could not parse ' + file.name + '. Try converting to GLB.')
-        setStatus('error')
-        URL.revokeObjectURL(url)
-      })
-    }).catch((e: any) => {
-      setErrorMsg(e.message || 'Failed to load viewer.')
-      setStatus('error')
-    })
-  }, [])
-
-  React.useEffect(() => {
-    meshRef.current?.traverse((c: any) => {
-      if (!c.isMesh) return
-      c.material.wireframe = mode === 'wire'
-      c.material.opacity = mode === 'xray' ? 0.2 : 1
-      c.material.transparent = mode === 'xray'
-    })
-  }, [mode])
-
   return (
-    <div style={{background:'#0d0d0d',borderRadius:8,overflow:'hidden',position:'relative'}}>
-      {status === 'idle' && (
-        <label style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:420,cursor:'pointer',gap:12}}>
-          <span style={{fontSize:40}}>📦</span>
-          <span style={{color:'rgba(255,255,255,0.7)',fontSize:14,fontWeight:500}}>Click to load a 3D file</span>
-          <span style={{color:'rgba(255,255,255,0.35)',fontSize:11}}>FBX · STL · OBJ · GLTF · GLB</span>
-          <input type="file" accept=".fbx,.stl,.obj,.gltf,.glb" style={{display:'none'}} onChange={e=>{if(e.target.files?.[0]) loadFile(e.target.files[0])}} />
-        </label>
-      )}
-      {status === 'loading' && (
-        <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:420,color:'rgba(255,255,255,0.5)',fontSize:13}}>
-          Loading {fileName}…
-        </div>
-      )}
-      {status === 'error' && (
-        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:420,gap:12,color:'#f09595',fontSize:13,textAlign:'center',padding:20}}>
-          <span style={{fontSize:32}}>⚠️</span>
-          <span>{errorMsg}</span>
-          <button onClick={()=>setStatus('idle')} style={{background:'rgba(255,255,255,0.08)',border:'0.5px solid rgba(255,255,255,0.2)',color:'rgba(255,255,255,0.6)',fontSize:12,padding:'5px 14px',borderRadius:6,cursor:'pointer'}}>Try another file</button>
-        </div>
-      )}
-      {status === 'loaded' && (
-        <div style={{position:'absolute',top:10,right:12,display:'flex',gap:6,zIndex:10}}>
-          {(['solid','wire','xray'] as const).map(m=>(
-            <button key={m} onClick={()=>setMode(m)} style={{background:mode===m?'rgba(255,255,255,0.15)':'transparent',border:'0.5px solid rgba(255,255,255,0.2)',color:mode===m?'#fff':'rgba(255,255,255,0.5)',fontSize:11,padding:'3px 10px',borderRadius:5,cursor:'pointer'}}>{m}</button>
-          ))}
+    <div style={{background:'#f5f4f0',borderRadius:8,padding:'30px 20px',textAlign:'center',color:'#aaa',fontSize:12}}>
+      📦 3D model viewer — coming soon
+    </div>
+  )
+}
 export default function MDOSApp() {
   const [role, setRole] = useState<Role>('admin')
   const [view, setView] = useState<View>('dashboard')
