@@ -382,147 +382,310 @@ export default function MDOSApp() {
     </div>
   )
 
+type ViewMode3D = 'solid'|'wireframe'|'xray'
+const CDN = 'https://cdn.jsdelivr.net/npm'
+const THREE_VER = 'three@0.160.0'
 
-// ── Model3DViewer — Three.js multi-format viewer (STL · OBJ · FBX · GLTF/GLB) ──
-// No API key required. Loads CDN scripts on demand. Orbit · Zoom · Pan · Wireframe · X-Ray
-
-type VM3 = 'solid'|'wireframe'|'xray'
-const _CDN = 'https://cdn.jsdelivr.net/npm'
-const _TV  = 'three@0.160.0'
-
-function _loadScript(src:string):Promise<void>{
-  return new Promise((res,rej)=>{
-    if(document.querySelector(`script[src="${src}"]`)){res();return}
-    const s=document.createElement('script')
-    s.src=src; s.onload=()=>res(); s.onerror=()=>rej(new Error('Load failed: '+src))
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return }
+    const s = document.createElement('script')
+    s.src = src
+    s.onload = () => resolve()
+    s.onerror = () => reject(new Error('Failed to load: ' + src))
     document.head.appendChild(s)
   })
 }
 
-function Model3DViewer({url,filename,onClose}:{url?:string,filename:string,onClose:()=>void}){
-  const mountRef=useRef<HTMLDivElement>(null)
-  const [loading,setLoading]=useState(true)
-  const [err,setErr]=useState('')
-  const [info,setInfo]=useState('')
-  const [vm,setVm]=useState<VM3>('solid')
-  const sceneRef=useRef<any>(null)
-  const ext=(filename.toLowerCase().match(/\.\w+$/)?.[0])||'.stl'
-  const fmtColors:Record<string,string>={'.stl':'#9FE1CB','.obj':'#FAC775','.fbx':'#AFA9EC','.gltf':'#85B7EB','.glb':'#85B7EB'}
-  const fc=fmtColors[ext]||'#aaa'
-  const fmtLabel=ext==='.stl'?'STL':ext==='.obj'?'OBJ':ext==='.fbx'?'FBX':(ext==='.gltf'||ext==='.glb')?'GLTF/GLB':ext.slice(1).toUpperCase()
+async function ensureThree() {
+  if ((window as any).THREE) return
+  await loadScript(`${CDN}/${THREE_VER}/build/three.min.js`)
+}
 
-  useEffect(()=>{
-    if(!mountRef.current||!url){setLoading(false);return}
-    let raf:number, rdr:any
-    const run=async()=>{
-      try{
-        setLoading(true);setErr('')
-        // Load Three.js core
-        if(!(window as any).THREE) await _loadScript(`${_CDN}/${_TV}/build/three.min.js`)
-        // Load OrbitControls
-        await _loadScript(`${_CDN}/${_TV}/examples/js/controls/OrbitControls.js`)
-        // Load format-specific loader
-        const THREE=(window as any).THREE
-        if(ext==='.stl') await _loadScript(`${_CDN}/${_TV}/examples/js/loaders/STLLoader.js`)
-        else if(ext==='.obj') await _loadScript(`${_CDN}/${_TV}/examples/js/loaders/OBJLoader.js`)
-        else if(ext==='.gltf'||ext==='.glb'){
-          if(!THREE.fflate){ await _loadScript(`${_CDN}/fflate@0.8.2/umd/index.js`); if((window as any).fflate) THREE.fflate=(window as any).fflate }
-          await _loadScript(`${_CDN}/${_TV}/examples/js/loaders/GLTFLoader.js`)
-        } else if(ext==='.fbx'){
-          if(!THREE.fflate){ await _loadScript(`${_CDN}/fflate@0.8.2/umd/index.js`); if((window as any).fflate) THREE.fflate=(window as any).fflate }
-          await _loadScript(`${_CDN}/${_TV}/examples/js/loaders/FBXLoader.js`)
-        }
-        const container=mountRef.current!
-        const W=container.clientWidth||620, H=420
+async function loadFormatLibs(ext: string) {
+  const THREE = (window as any).THREE
+  await loadScript(`${CDN}/${THREE_VER}/examples/js/controls/OrbitControls.js`)
+
+  if (ext === '.stl') {
+    await loadScript(`${CDN}/${THREE_VER}/examples/js/loaders/STLLoader.js`)
+  } else if (ext === '.obj') {
+    await loadScript(`${CDN}/${THREE_VER}/examples/js/loaders/OBJLoader.js`)
+  } else if (ext === '.gltf' || ext === '.glb') {
+    // GLTFLoader needs fflate - load standalone fflate first
+    if (!THREE.fflate) {
+      await loadScript(`${CDN}/fflate@0.8.2/umd/index.js`)
+      if ((window as any).fflate) THREE.fflate = (window as any).fflate
+    }
+    await loadScript(`${CDN}/${THREE_VER}/examples/js/loaders/GLTFLoader.js`)
+  } else if (ext === '.fbx') {
+    if (!THREE.fflate) {
+      await loadScript(`${CDN}/fflate@0.8.2/umd/index.js`)
+      if ((window as any).fflate) THREE.fflate = (window as any).fflate
+    }
+    await loadScript(`${CDN}/${THREE_VER}/examples/js/loaders/FBXLoader.js`)
+  }
+}
+
+function fitCameraToObject(camera: any, object: any, THREE: any, controls: any) {
+  const box = new THREE.Box3().setFromObject(object)
+  const size = box.getSize(new THREE.Vector3())
+  const center = box.getCenter(new THREE.Vector3())
+  object.position.sub(center)
+  const maxDim = Math.max(size.x, size.y, size.z)
+  const fov = camera.fov * (Math.PI / 180)
+  const dist = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 2.2
+  camera.position.set(dist * 0.7, dist * 0.5, dist * 0.7)
+  camera.near = maxDim / 1000
+  camera.far = maxDim * 100
+  camera.updateProjectionMatrix()
+  if (controls) {
+    controls.target.set(0, 0, 0)
+    controls.minDistance = maxDim * 0.05
+    controls.maxDistance = maxDim * 20
+    controls.update()
+  }
+}
+
+function Model3DViewer({url, filename, onClose}: {url?: string, filename: string, onClose: () => void}) {
+  const mountRef = useRef<HTMLDivElement>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [info, setInfo] = useState('')
+  const [viewMode, setViewMode] = useState<ViewMode3D>('solid')
+  const sceneRef = useRef<any>(null)
+
+  const ext = filename.toLowerCase().match(/\.\w+$/)?.[0] || '.stl'
+  const formatLabel = ext === '.stl' ? 'STL' : ext === '.obj' ? 'OBJ' : ext === '.fbx' ? 'FBX' : ext.includes('glt') || ext === '.glb' ? 'GLTF/GLB' : ext.toUpperCase().slice(1)
+  const formatColor: Record<string,string> = {
+    '.stl': '#9FE1CB', '.obj': '#FAC775', '.fbx': '#AFA9EC', '.gltf': '#85B7EB', '.glb': '#85B7EB'
+  }
+
+  useEffect(() => {
+    if (!mountRef.current || !url) { setLoading(false); return }
+    let animId: number
+    let renderer: any
+
+    const run = async () => {
+      try {
+        setLoading(true); setError('')
+        await ensureThree()
+        await loadFormatLibs(ext)
+        const THREE = (window as any).THREE
+        if (!THREE) throw new Error('Three.js failed to load')
+
+        const container = mountRef.current!
+        const w = container.clientWidth || 600
+        const h = 400
+
         // Scene
-        const scene=new THREE.Scene(); scene.background=new THREE.Color(0x181818)
-        scene.add(new THREE.GridHelper(200,20,0x2a2a2a,0x1e1e1e))
-        scene.add(new THREE.AmbientLight(0xffffff,0.6))
-        const dl=new THREE.DirectionalLight(0xffffff,1.2); dl.position.set(5,10,5); scene.add(dl)
-        const dl2=new THREE.DirectionalLight(0x88ccff,0.4); dl2.position.set(-5,-3,-5); scene.add(dl2)
-        const cam=new THREE.PerspectiveCamera(45,W/H,0.001,100000); cam.position.set(10,8,10)
-        rdr=new THREE.WebGLRenderer({antialias:true})
-        rdr.setPixelRatio(Math.min(window.devicePixelRatio,2)); rdr.setSize(W,H)
-        container.innerHTML=''; container.appendChild(rdr.domElement)
-        const ctrl=new THREE.OrbitControls(cam,rdr.domElement); ctrl.enableDamping=true; ctrl.dampingFactor=0.06
-        const defMat=new THREE.MeshPhongMaterial({color:0x2E8B62,specular:0x9FE1CB,shininess:30,side:THREE.DoubleSide})
+        const scene = new THREE.Scene()
+        scene.background = new THREE.Color(0x181818)
 
-        const onLoaded=(obj:any)=>{
-          let tris=0
-          obj.traverse((c:any)=>{
-            if(c.isMesh){
-              if(!c.material||(Array.isArray(c.material)&&!c.material.length)) c.material=defMat
-              if(c.geometry?.attributes?.position) tris+=c.geometry.attributes.position.count/3
+        // Grid
+        const grid = new THREE.GridHelper(200, 20, 0x2a2a2a, 0x222222)
+        scene.add(grid)
+
+        // Lights
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6))
+        const dir1 = new THREE.DirectionalLight(0xffffff, 1.2)
+        dir1.position.set(5, 10, 5)
+        scene.add(dir1)
+        const dir2 = new THREE.DirectionalLight(0x88ccff, 0.4)
+        dir2.position.set(-5, -3, -5)
+        scene.add(dir2)
+
+        // Camera
+        const camera = new THREE.PerspectiveCamera(45, w / h, 0.001, 100000)
+        camera.position.set(10, 8, 10)
+
+        // Renderer
+        renderer = new THREE.WebGLRenderer({ antialias: true })
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+        renderer.setSize(w, h)
+        renderer.shadowMap.enabled = true
+        container.innerHTML = ''
+        container.appendChild(renderer.domElement)
+
+        // Controls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement)
+        controls.enableDamping = true
+        controls.dampingFactor = 0.06
+
+        // Default material (for formats that don't have own materials)
+        const defaultMat = new THREE.MeshPhongMaterial({
+          color: 0x2E8B62, specular: 0x9FE1CB, shininess: 30, side: THREE.DoubleSide
+        })
+
+        // Load the model based on format
+        const onLoaded = (object: any) => {
+          // Normalize geometry — extract mesh info
+          let triCount = 0
+          object.traverse((child: any) => {
+            if (child.isMesh) {
+              // Apply default material only if mesh has no real material
+              if (!child.material || (Array.isArray(child.material) && !child.material.length)) {
+                child.material = defaultMat
+              }
+              if (child.geometry?.attributes?.position) {
+                triCount += child.geometry.attributes.position.count / 3
+              }
             }
           })
-          scene.add(obj)
-          const box=new THREE.Box3().setFromObject(obj)
-          const sz=box.getSize(new THREE.Vector3()), ctr=box.getCenter(new THREE.Vector3())
-          obj.position.sub(ctr)
-          const maxD=Math.max(sz.x,sz.y,sz.z)
-          const fov=cam.fov*(Math.PI/180), dist=Math.abs(maxD/2/Math.tan(fov/2))*2.2
-          cam.position.set(dist*0.7,dist*0.5,dist*0.7); cam.near=maxD/1000; cam.far=maxD*100; cam.updateProjectionMatrix()
-          ctrl.minDistance=maxD*0.05; ctrl.maxDistance=maxD*20; ctrl.update()
-          sceneRef.current={obj,defMat,THREE}
-          setInfo((tris>0?Math.round(tris).toLocaleString()+' tris · ':'')+sz.x.toFixed(0)+'×'+sz.y.toFixed(0)+'×'+sz.z.toFixed(0))
+
+          scene.add(object)
+          fitCameraToObject(camera, object, THREE, controls)
+
+          // Update grid position to bottom of model
+          const box = new THREE.Box3().setFromObject(object)
+          const size = box.getSize(new THREE.Vector3())
+          grid.position.y = -size.y * 0.5
+          grid.scale.setScalar(Math.max(size.x, size.z) / 10)
+
+          const dims = new THREE.Box3().setFromObject(object).getSize(new THREE.Vector3())
+          setInfo(triCount > 0 ? `${Math.round(triCount).toLocaleString()} triangles · ${dims.x.toFixed(0)}×${dims.y.toFixed(0)}×${dims.z.toFixed(0)}` : `Loaded · ${dims.x.toFixed(0)}×${dims.y.toFixed(0)}×${dims.z.toFixed(0)}`)
+          sceneRef.current = { object, defaultMat, THREE, renderer }
           setLoading(false)
         }
-        const onErr=(e:any)=>{ setErr('Load failed: '+(e?.message||String(e))); setLoading(false) }
-        if(ext==='.stl'){ const l=new THREE.STLLoader(); l.load(url,(g:any)=>{const m=new THREE.Mesh(g,defMat);onLoaded(m)},undefined,onErr) }
-        else if(ext==='.obj'){ const l=new THREE.OBJLoader(); l.load(url,onLoaded,undefined,onErr) }
-        else if(ext==='.gltf'||ext==='.glb'){ const l=new THREE.GLTFLoader(); l.load(url,(g:any)=>onLoaded(g.scene),undefined,onErr) }
-        else if(ext==='.fbx'){ const l=new THREE.FBXLoader(); l.load(url,onLoaded,undefined,onErr) }
-        else{ setErr('Unsupported: '+ext); setLoading(false); return }
-        const onR=()=>{ if(!container)return; cam.aspect=container.clientWidth/H; cam.updateProjectionMatrix(); rdr.setSize(container.clientWidth,H) }
-        window.addEventListener('resize',onR)
-        const animate=()=>{ raf=requestAnimationFrame(animate); ctrl.update(); rdr.render(scene,cam) }
-        animate()
-      } catch(e:any){ setErr('Viewer error: '+e.message); setLoading(false) }
-    }
-    run()
-    return ()=>{ cancelAnimationFrame(raf); if(rdr) rdr.dispose() }
-  },[url,filename])
 
-  useEffect(()=>{
-    const s=sceneRef.current; if(!s) return
-    s.obj.traverse((c:any)=>{
-      if(!c.isMesh) return
-      const ms=Array.isArray(c.material)?c.material:[c.material]
-      ms.forEach((m:any)=>{ if(!m) return; m.wireframe=vm==='wireframe'; m.transparent=vm==='xray'; m.opacity=vm==='xray'?0.28:1; m.needsUpdate=true })
+        const onError = (e: any) => {
+          setError('Failed to load model: ' + (e?.message || String(e)))
+          setLoading(false)
+        }
+
+        if (ext === '.stl') {
+          const loader = new THREE.STLLoader()
+          loader.load(url, (geo: any) => {
+            const mesh = new THREE.Mesh(geo, defaultMat)
+            mesh.castShadow = true
+            onLoaded(mesh)
+          }, undefined, onError)
+        } else if (ext === '.obj') {
+          const loader = new THREE.OBJLoader()
+          loader.load(url, onLoaded, undefined, onError)
+        } else if (ext === '.gltf' || ext === '.glb') {
+          const loader = new THREE.GLTFLoader()
+          loader.load(url, (gltf: any) => onLoaded(gltf.scene), undefined, onError)
+        } else if (ext === '.fbx') {
+          const loader = new THREE.FBXLoader()
+          loader.load(url, onLoaded, undefined, onError)
+        } else {
+          setError('Unsupported format: ' + ext)
+          setLoading(false)
+          return
+        }
+
+        // Resize handler
+        const onResize = () => {
+          if (!container) return
+          const nw = container.clientWidth
+          camera.aspect = nw / h
+          camera.updateProjectionMatrix()
+          renderer.setSize(nw, h)
+        }
+        window.addEventListener('resize', onResize)
+
+        // Render loop
+        const animate = () => {
+          animId = requestAnimationFrame(animate)
+          controls.update()
+          renderer.render(scene, camera)
+        }
+        animate()
+
+      } catch (e: any) {
+        setError('Viewer error: ' + e.message)
+        setLoading(false)
+      }
+    }
+
+    run()
+    return () => {
+      cancelAnimationFrame(animId)
+      if (renderer) { renderer.dispose() }
+    }
+  }, [url, filename])
+
+  // View mode toggle
+  useEffect(() => {
+    const s = sceneRef.current
+    if (!s) return
+    s.object.traverse((child: any) => {
+      if (!child.isMesh) return
+      const mats = Array.isArray(child.material) ? child.material : [child.material]
+      mats.forEach((m: any) => {
+        if (!m) return
+        m.wireframe = viewMode === 'wireframe'
+        m.transparent = viewMode === 'xray'
+        m.opacity = viewMode === 'xray' ? 0.28 : 1
+        m.needsUpdate = true
+      })
     })
-  },[vm])
+  }, [viewMode])
+
+  const fmtColor = formatColor[ext] || '#aaa'
 
   return (
     <div style={{background:'#111',borderRadius:10,overflow:'hidden',border:'0.5px solid rgba(255,255,255,0.1)',marginBottom:12}}>
+      {/* Header */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'9px 14px',background:'#1a1a1a',borderBottom:'0.5px solid rgba(255,255,255,0.08)'}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <span style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:5,background:'rgba(255,255,255,0.06)',color:fc,border:`0.5px solid ${fc}40`}}>{fmtLabel}</span>
-          <span style={{fontSize:12,fontWeight:500,color:'#fff',maxWidth:260,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{filename}</span>
-          {info&&<span style={{fontSize:10,color:'#9FE1CB',background:'rgba(30,100,70,0.35)',padding:'2px 8px',borderRadius:8,whiteSpace:'nowrap'}}>{info}</span>}
+          <span style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:5,background:'rgba(255,255,255,0.06)',color:fmtColor,border:`0.5px solid ${fmtColor}40`}}>{formatLabel}</span>
+          <span style={{fontSize:12,fontWeight:500,color:'#fff',maxWidth:280,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{filename}</span>
+          {info && <span style={{fontSize:10,color:'#9FE1CB',background:'rgba(30,100,70,0.35)',padding:'2px 8px',borderRadius:8,whiteSpace:'nowrap'}}>{info}</span>}
         </div>
         <div style={{display:'flex',gap:5,alignItems:'center'}}>
-          {(['solid','wireframe','xray'] as const).map(m=>(
-            <button key={m} onClick={()=>setVm(m)} style={{fontSize:10,padding:'3px 8px',borderRadius:5,cursor:'pointer',
-              border:`0.5px solid ${vm===m?fc:'rgba(255,255,255,0.15)'}`,background:vm===m?`${fc}25`:'transparent',color:vm===m?fc:'#777'}}>
+          {(['solid','wireframe','xray'] as const).map(m => (
+            <button key={m} onClick={()=>setViewMode(m)}
+              style={{fontSize:10,padding:'3px 8px',borderRadius:5,cursor:'pointer',
+                border:`0.5px solid ${viewMode===m?fmtColor:'rgba(255,255,255,0.15)'}`,
+                background:viewMode===m?`${fmtColor}25`:'transparent',
+                color:viewMode===m?fmtColor:'#777'}}>
               {m==='solid'?'◼ Solid':m==='wireframe'?'⬡ Wire':'◻ X-Ray'}
             </button>
           ))}
           <button onClick={onClose} style={{fontSize:10,padding:'3px 8px',borderRadius:5,border:'0.5px solid rgba(255,80,80,0.3)',background:'transparent',color:'#f88',cursor:'pointer',marginLeft:4}}>✕</button>
         </div>
       </div>
-      <div style={{position:'relative',width:'100%',minHeight:420}}>
-        {(loading||!url)&&(
+
+      {/* Canvas area */}
+      <div style={{position:'relative',width:'100%',minHeight:400}}>
+        {(loading || !url) && (
           <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#181818',zIndex:2,gap:10}}>
-            {loading&&url?(<><div style={{fontSize:13,color:fc}}>Loading {fmtLabel}…</div><div style={{fontSize:11,color:'#444'}}>Parsing geometry · building scene</div></>):
-            (<><div style={{fontSize:28}}>📐</div><div style={{fontSize:13,fontWeight:500,color:'#fff'}}>3D model viewer</div><div style={{fontSize:11,color:'#555',maxWidth:280,textAlign:'center'}}>Click 👁 View 3D on a file, or drop a model into the upload zone</div></>)}
+            {loading && url ? (
+              <>
+                <div style={{fontSize:13,color:fmtColor}}>Loading {formatLabel} model...</div>
+                <div style={{fontSize:11,color:'#444'}}>Parsing geometry · building scene</div>
+              </>
+            ) : (
+              <>
+                <div style={{fontSize:28}}>📐</div>
+                <div style={{fontSize:13,fontWeight:500,color:'#fff'}}>3D model viewer</div>
+                <div style={{fontSize:11,color:'#555',maxWidth:280,textAlign:'center'}}>Click "View 3D" on a file above, or drop a model into the upload zone</div>
+                <div style={{display:'flex',gap:6,marginTop:4}}>
+                  {['.stl','.obj','.fbx','.gltf','.glb'].map(f => (
+                    <span key={f} style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'rgba(255,255,255,0.05)',color:'#555',border:'0.5px solid rgba(255,255,255,0.08)'}}>{f}</span>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
-        {err&&(<div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#181818',zIndex:2,gap:8}}><div style={{fontSize:24}}>⚠️</div><div style={{fontSize:12,color:'#f88',maxWidth:320,textAlign:'center',lineHeight:1.5}}>{err}</div><div style={{fontSize:10,color:'#555',marginTop:4}}>Try GLTF/GLB for best compatibility. FBX files may take a moment.</div></div>)}
-        <div ref={mountRef} style={{width:'100%',height:420}}/>
+        {error && (
+          <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#181818',zIndex:2,gap:8}}>
+            <div style={{fontSize:24}}>⚠️</div>
+            <div style={{fontSize:12,color:'#f88',maxWidth:320,textAlign:'center',lineHeight:1.5}}>{error}</div>
+            <div style={{fontSize:10,color:'#555',marginTop:4}}>FBX files may take a moment — large files may fail. Try converting to GLTF/GLB for best compatibility.</div>
+          </div>
+        )}
+        <div ref={mountRef} style={{width:'100%',height:400}}/>
       </div>
+
+      {/* Footer controls hint */}
       <div style={{padding:'7px 14px',background:'#111',borderTop:'0.5px solid rgba(255,255,255,0.05)',display:'flex',gap:14,flexWrap:'wrap',fontSize:10,color:'#444'}}>
-        <span>🖱 Left drag — orbit</span><span>Right drag — pan</span><span>Scroll — zoom</span>
-        <span style={{marginLeft:'auto',color:'#333'}}>Three.js WebGL · STL · OBJ · FBX · GLTF/GLB · No API key required</span>
+        <span>🖱 Left drag — orbit</span>
+        <span>Right drag — pan</span>
+        <span>Scroll — zoom</span>
+        <span style={{marginLeft:'auto',color:'#333'}}>Three.js WebGL · STL · OBJ · FBX · GLTF/GLB</span>
       </div>
     </div>
   )
@@ -531,11 +694,17 @@ function Model3DViewer({url,filename,onClose}:{url?:string,filename:string,onClo
 
   const BimTab = ({p}:{p:typeof PROJECTS[0]}) => {
     const [activeSTL, setActiveSTL] = useState<{url:string,name:string}|null>(null)
+    // Demo STL URLs - replace with real S3 signed URLs in production
+    const getSTLUrl = (filename: string) => {
+      // For demo: return null (shows upload prompt)
+      // In production: return signed S3 URL for the file
+      return null as string | null
+    }
     return (
     <div>
       <div className="panel">
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-          <div style={{fontWeight:500,fontSize:12}}>📤 STL File Versions — VERTIKAAL Output</div>
+          <div style={{fontWeight:500,fontSize:12}}>📤 3D Model Files — VERTIKAAL Output</div>
           <button className="btn btn-primary" onClick={simUpload}>↑ Upload STL</button>
         </div>
         {p.stlVersions.length===0 && <div style={{fontSize:12,color:'#aaa',textAlign:'center',padding:'20px 0',background:'#f5f4f0',borderRadius:8}}>No STL files uploaded yet</div>}
@@ -549,44 +718,44 @@ function Model3DViewer({url,filename,onClose}:{url?:string,filename:string,onClo
             <span style={{fontSize:10,padding:'2px 7px',borderRadius:8,background:s.active?'var(--mdi-gold-bg)':'#EAF3DE',color:s.active?'var(--mdi-gold-text)':'#3B6D11',whiteSpace:'nowrap'}}>v{s.version}{s.active?' — Active':''}</span>
             <button className="btn" style={{marginLeft:4,padding:'4px 8px'}}>↓</button>
             <button className="btn btn-primary" style={{marginLeft:4,padding:'4px 8px',fontSize:11}}
-              onClick={()=>setActiveSTL({url:'local:'+s.filename, name:s.filename})}>
+              onClick={()=>setActiveSTL({url: getSTLUrl(s.filename) || 'demo', name: s.filename})}>
               👁 View 3D
             </button>
           </div>
         ))}
         {uploadFlash && <div style={{marginTop:8,background:'#EAF3DE',borderRadius:8,padding:'8px 10px',fontSize:11,color:'#3B6D11',display:'flex',alignItems:'center',gap:6}}>✓ STL uploaded and queued for geometry parsing — downstream modules will update automatically.</div>}
-        <div style={{marginTop:10,border:'1.5px dashed rgba(0,0,0,0.15)',borderRadius:8,padding:20,
-          textAlign:'center',color:'#aaa',cursor:'pointer',fontSize:12}}
-          onClick={()=>document.getElementById('mdos-3d-upload')?.click()}
+        <div style={{marginTop:10,border:'1.5px dashed rgba(0,0,0,0.15)',borderRadius:8,padding:20,textAlign:'center',color:'#aaa',cursor:'pointer',fontSize:12}} onClick={()=>document.getElementById('stl-file-input')?.click()}
           onDragOver={e=>e.preventDefault()}
           onDrop={e=>{
             e.preventDefault()
             const file = e.dataTransfer.files[0]
-            if (file) setActiveSTL({url: URL.createObjectURL(file), name: file.name})
+            if (file) { const url = URL.createObjectURL(file); setActiveSTL({url, name: file.name}) }
           }}>
-          <input id='mdos-3d-upload' type='file' accept='.stl,.obj,.fbx,.gltf,.glb' style={{display:'none'}}
+          <input id='stl-file-input' type='file' accept='.stl,.obj,.fbx,.gltf,.glb' style={{display:'none'}}
             onChange={e=>{
               const file = e.target.files?.[0]
-              if (file) setActiveSTL({url: URL.createObjectURL(file), name: file.name});(e.target as HTMLInputElement).value=''
+              if (file) { const url = URL.createObjectURL(file); setActiveSTL({url, name: file.name}) }
             }}/>
-          ☁ Drop 3D model here or click to upload (STL · OBJ · FBX · GLTF · GLB)
+          ☁ Drop model file here or click to upload for 3D preview
+          STL · OBJ · FBX · GLTF · GLB
         </div>
       </div>
-      {/* ── 3D Model Viewer ── */}
-      {activeSTL ? (
-        <Model3DViewer url={activeSTL.url.startsWith('local:') ? undefined : activeSTL.url}
-          filename={activeSTL.name} onClose={()=>setActiveSTL(null)}/>
-      ) : (
-        <div style={{marginBottom:12,background:'#181818',borderRadius:10,padding:'28px 20px',
-          textAlign:'center',border:'0.5px solid rgba(255,255,255,0.07)'}}>
+      {/* 3D STL Viewer */}
+      {activeSTL && (
+        <div style={{marginBottom:12}}>
+          <Model3DViewer
+            url={activeSTL.url === 'demo' ? undefined : activeSTL.url}
+            filename={activeSTL.name}
+            onClose={()=>setActiveSTL(null)}
+          />
+        </div>
+      )}
+      {!activeSTL && (
+        <div style={{marginBottom:12,background:'#1a1a1a',borderRadius:10,padding:'20px',textAlign:'center',border:'0.5px solid rgba(255,255,255,0.08)'}}>
           <div style={{fontSize:28,marginBottom:8}}>📐</div>
-          <div style={{fontSize:13,fontWeight:500,color:'#fff',marginBottom:4}}>3D Model Viewer</div>
-          <div style={{fontSize:11,color:'#555',marginBottom:10}}>Click 👁 View 3D on any file, or drop a model into the upload zone above</div>
-          <div style={{display:'flex',gap:5,justifyContent:'center',flexWrap:'wrap'}}>
-            {['.stl','.obj','.fbx','.gltf','.glb'].map(f=>(
-              <span key={f} style={{fontSize:10,padding:'2px 8px',borderRadius:4,background:'rgba(255,255,255,0.04)',color:'#555',border:'0.5px solid rgba(255,255,255,0.07)'}}>{f}</span>
-            ))}
-          </div>
+          <div style={{fontSize:13,fontWeight:500,color:'#fff',marginBottom:4}}>3D STL Viewer</div>
+          <div style={{fontSize:11,color:'#666',marginBottom:12}}>Click "👁 View 3D" on any STL version above, or drop a file in the upload zone to preview it here</div>
+          <div style={{fontSize:10,color:'#444'}}>Powered by Three.js WebGL · Orbit · Zoom · Pan · Wireframe · X-Ray</div>
         </div>
       )}
       {p.bimFiles.length > 0 && (
