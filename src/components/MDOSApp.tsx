@@ -1,22 +1,22 @@
 'use client'
 
-import { useState, useRef, useEffect, ReactNode } from 'react'
+import React, { useState } from 'react'
 import { PROJECTS, NOTIFICATIONS, ACTIVITY, USERS, NOTIF_EVENTS, SCREENING_THRESHOLDS } from '@/data/mock'
 
 const EMPTY_PROJECT_FORM = {
   name: '', address: '', apn: '', city: '', state: 'TX', market: 'austin',
-  goal: 'RESIDENTIAL_SFH', method: 'THREEDCP', units: '', lotAcres: '',
+  goal: 'RESIDENTIAL_SFH', method: '3DCP', units: '', lotAcres: '',
   zoning: '', budgetMin: '', budgetMax: '', partner: '', notes: '',
 }
 
-type View = 'dashboard' | 'projects' | 'project-detail' | 'ifindy' | 'roles' | 'notifications'
+type View = 'dashboard' | 'projects' | 'project-detail' | 'ifindy' | 'vertikaal' | 'roles' | 'notifications'
 type Role = 'admin' | 'team' | 'partner' | 'investor'
 type TabRole = Role
 
 const ROLE_NAV: Record<Role, View[]> = {
-  admin:    ['dashboard','projects','ifindy','roles','notifications'],
-  team:     ['dashboard','projects','ifindy','notifications'],
-  partner:  ['dashboard','projects'],
+  admin:    ['dashboard','projects','ifindy','vertikaal','roles','notifications'],
+  team:     ['dashboard','projects','ifindy','vertikaal','notifications'],
+  partner:  ['dashboard','projects','ifindy'],
   investor: ['dashboard'],
 }
 
@@ -38,19 +38,1674 @@ function fmt(n: number | null | undefined, prefix='$') {
   return prefix + n
 }
 
+// ── NPField — top-level so it never remounts ──────────────────────────────────
+function NPField({label, children}: {label:string, children:React.ReactNode}) {
+  return (
+    <div style={{marginBottom:12}}>
+      <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3,fontWeight:500}}>{label}</label>
+      {children}
+    </div>
+  )
+}
+
+// ── New Project Modal — top-level so inputs keep focus ────────────────────────
+function NewProjectModal({
+  show, step, form, success,
+  onClose, onNext, onBack, onSubmit, onField
+}: {
+  show:boolean, step:number, form:Record<string,string>, success:boolean,
+  onClose:()=>void, onNext:()=>void, onBack:()=>void, onSubmit:()=>void,
+  onField:(k:string,v:string)=>void
+}) {
+  if (!show) return null
+  const stepTitles = ['Project Identity','Site Parameters','Financial Setup']
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{background:'#fff',borderRadius:12,width:520,maxHeight:'88vh',overflow:'hidden',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}}>
+        <div style={{background:'var(--mdi-green)',padding:'16px 20px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div>
+            <div style={{fontSize:11,color:'rgba(255,255,255,0.5)',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:2}}>New Project</div>
+            <div style={{fontSize:15,fontWeight:500,color:'#fff'}}>{stepTitles[step-1]}</div>
+          </div>
+          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+            {[1,2,3].map(s=>(
+              <div key={s} style={{width:24,height:4,borderRadius:2,background:s<=step?'var(--mdi-gold)':'rgba(255,255,255,0.2)'}}/>
+            ))}
+            <button onClick={onClose} style={{marginLeft:10,background:'transparent',border:'none',color:'rgba(255,255,255,0.6)',fontSize:18,cursor:'pointer',lineHeight:1}}>✕</button>
+          </div>
+        </div>
+        <div style={{flex:1,overflowY:'auto',padding:'20px 24px'}}>
+          {success ? (
+            <div style={{textAlign:'center',padding:'40px 20px'}}>
+              <div style={{fontSize:40,marginBottom:12}}>✅</div>
+              <div style={{fontWeight:500,fontSize:15,marginBottom:6}}>Project Created</div>
+              <div style={{fontSize:12,color:'#888'}}>{form.name} has been added to your pipeline and is ready for iFindy screening.</div>
+            </div>
+          ) : step === 1 ? (
+            <>
+              <NPField label="Project Name *"><input value={form.name} onChange={e=>onField('name',e.target.value)} placeholder="e.g. Clarksville Phase 2"/></NPField>
+              <NPField label="Full Address *"><input value={form.address} onChange={e=>onField('address',e.target.value)} placeholder="e.g. 123 Main St, Austin TX 78701"/></NPField>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <NPField label="City"><input value={form.city} onChange={e=>onField('city',e.target.value)} placeholder="Austin"/></NPField>
+                <NPField label="State">
+                  <select value={form.state} onChange={e=>onField('state',e.target.value)}>
+                    <option value="TX">Texas</option><option value="FL">Florida</option>
+                    <option value="UK">UK</option><option value="KAZ">Kazakhstan</option>
+                    <option value="KSA">Saudi Arabia</option><option value="OTHER">Other</option>
+                  </select>
+                </NPField>
+              </div>
+              <NPField label="APN (optional)"><input value={form.apn} onChange={e=>onField('apn',e.target.value)} placeholder="e.g. 0103050202"/></NPField>
+              <NPField label="Alpha JV Partner / GC"><input value={form.partner} onChange={e=>onField('partner',e.target.value)} placeholder="e.g. Modstone / Daniel Brown"/></NPField>
+              <NPField label="Development Goal">
+                <select value={form.goal} onChange={e=>onField('goal',e.target.value)}>
+                  <option value="RESIDENTIAL_SFH">Residential SFH</option>
+                  <option value="MULTIFAMILY_BTR">Multifamily / BTR</option>
+                  <option value="HOSPITALITY_STR">Hospitality / STR</option>
+                  <option value="MIXED_USE">Mixed-use</option>
+                  <option value="INDUSTRIAL_LOGISTICS">Industrial / Logistics</option>
+                </select>
+              </NPField>
+            </>
+          ) : step === 2 ? (
+            <>
+              <NPField label="Primary Construction Method">
+                <select value={form.method} onChange={e=>onField('method',e.target.value)}>
+                  <option value="3DCP">3DCP — 3D Concrete Printing</option>
+                  <option value="SCIP">SCIP — Structural Concrete Insulated Panel</option>
+                  <option value="MODULAR">Modular</option>
+                  <option value="TUNNEL_FORM">Tunnel-form</option>
+                  <option value="HYBRID">Hybrid</option>
+                </select>
+              </NPField>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <NPField label="Target Units"><input type="number" value={form.units} onChange={e=>onField('units',e.target.value)} placeholder="e.g. 4"/></NPField>
+                <NPField label="Lot Size (acres)"><input type="number" value={form.lotAcres} onChange={e=>onField('lotAcres',e.target.value)} placeholder="e.g. 0.18"/></NPField>
+              </div>
+              <NPField label="Zoning Code"><input value={form.zoning} onChange={e=>onField('zoning',e.target.value)} placeholder="e.g. SF-3, MF-2, PUD"/></NPField>
+              <NPField label="Initial Notes">
+                <textarea value={form.notes} onChange={e=>onField('notes',e.target.value)}
+                  placeholder="Deed restrictions, water access, infrastructure notes, etc."
+                  style={{width:'100%',height:72,resize:'none',fontSize:12,padding:'6px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}/>
+              </NPField>
+            </>
+          ) : (
+            <>
+              <div style={{background:'#f5f4f0',borderRadius:8,padding:'10px 12px',marginBottom:16,fontSize:11,color:'#666'}}>
+                Budget range is used in Module 01 iFindy feasibility scoring to evaluate developer budget vs. estimated construction cost.
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <NPField label="Budget Min ($M)"><input type="number" value={form.budgetMin} onChange={e=>onField('budgetMin',e.target.value)} placeholder="e.g. 1.5"/></NPField>
+                <NPField label="Budget Max ($M)"><input type="number" value={form.budgetMax} onChange={e=>onField('budgetMax',e.target.value)} placeholder="e.g. 4.5"/></NPField>
+              </div>
+              <div style={{background:'#f5f4f0',borderRadius:8,padding:12,marginTop:8}}>
+                <div style={{fontSize:11,fontWeight:500,color:'#555',marginBottom:8}}>Project Summary</div>
+                {[
+                  ['Name', form.name||'—'],['Address', form.address||'—'],['State', form.state],
+                  ['Goal', form.goal.replace(/_/g,' ')],['Method', form.method],
+                  ['Units', form.units||'—'],['Partner', form.partner||'—'],
+                  ['Budget', form.budgetMin&&form.budgetMax?`$${form.budgetMin}M - $${form.budgetMax}M`:'—'],
+                ].map(([l,v])=>(
+                  <div key={l} style={{display:'flex',justifyContent:'space-between',fontSize:11,padding:'3px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
+                    <span style={{color:'#888'}}>{l}</span><span style={{fontWeight:500,maxWidth:280,textAlign:'right'}}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        {!success && (
+          <div style={{padding:'14px 24px',borderTop:'0.5px solid rgba(0,0,0,0.1)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'#fafaf8'}}>
+            <button className="btn" onClick={onBack}>{step===1?'Cancel':'← Back'}</button>
+            <div style={{fontSize:11,color:'#aaa'}}>Step {step} of 3</div>
+            {step<3
+              ? <button className="btn btn-primary" onClick={onNext} disabled={step===1&&!form.name}>Next →</button>
+              : <button className="btn btn-primary" onClick={onSubmit}>Create Project ✓</button>
+            }
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+// ── Schedule data from Clarksville Master Schedule ────────────────────────────
+const CLARKSVILLE_SCHEDULE = [
+  // PRE-CONSTRUCTION
+  { phase:'PRE-CONSTRUCTION', task:'Finalize Construction Documents', status:'Complete', progress:100, startOffset:0, days:2, critical:false },
+  { phase:'PRE-CONSTRUCTION', task:'Design', status:'Complete', progress:100, startOffset:0, days:62, critical:false },
+  { phase:'PRE-CONSTRUCTION', task:'Well Permit', status:'Critical', progress:20, startOffset:62, days:30, critical:true },
+  { phase:'PRE-CONSTRUCTION', task:'Truss Engineering', status:'Complete', progress:100, startOffset:0, days:30, critical:false },
+  { phase:'PRE-CONSTRUCTION', task:'Contractor Authorization Forms', status:'Complete', progress:100, startOffset:0, days:1, critical:false },
+  { phase:'PRE-CONSTRUCTION', task:'Residential Permit Approval', status:'Complete', progress:100, startOffset:0, days:106, critical:false },
+  { phase:'PRE-CONSTRUCTION', task:'FPL Utility Easement', status:'Critical', progress:70, startOffset:0, days:1, critical:true },
+  { phase:'PRE-CONSTRUCTION', task:'Order Materials', status:'Critical', progress:0, startOffset:0, days:14, critical:true },
+  // HORIZONTAL CONSTRUCTION
+  { phase:'HORIZONTAL', task:'Install Permit Box & Silt Fence', status:'Most Critical', progress:0, startOffset:108, days:1, critical:true },
+  { phase:'HORIZONTAL', task:'Earthwork Fill & Grade', status:'Scheduled', progress:10, startOffset:109, days:3, critical:false },
+  { phase:'HORIZONTAL', task:'Gravel Fill', status:'Critical', progress:0, startOffset:110, days:2, critical:true },
+  { phase:'HORIZONTAL', task:'Compaction Test 1', status:'Inspection', progress:0, startOffset:112, days:1, critical:false },
+  { phase:'HORIZONTAL', task:'Formwork', status:'Critical', progress:0, startOffset:113, days:1, critical:true },
+  { phase:'HORIZONTAL', task:'Plumbing Rough-In', status:'Scheduled', progress:0, startOffset:114, days:1, critical:false },
+  { phase:'HORIZONTAL', task:'Vapor Barrier', status:'Critical', progress:0, startOffset:115, days:1, critical:true },
+  { phase:'HORIZONTAL', task:'Slab Reinforcement', status:'Critical', progress:0, startOffset:115, days:1, critical:true },
+  { phase:'HORIZONTAL', task:'Electrical Rough-In', status:'Critical', progress:0, startOffset:116, days:1, critical:true },
+  { phase:'HORIZONTAL', task:'Pre-pour Slab Inspection', status:'Inspection', progress:0, startOffset:117, days:1, critical:false },
+  { phase:'HORIZONTAL', task:'Slab Pour', status:'Critical', progress:0, startOffset:118, days:1, critical:true },
+  { phase:'HORIZONTAL', task:'Slab Curing Period', status:'Critical', progress:0, startOffset:118, days:5, critical:true },
+  { phase:'HORIZONTAL', task:'Septic System', status:'Critical', progress:20, startOffset:159, days:7, critical:true },
+  { phase:'HORIZONTAL', task:'Well System Install', status:'Critical', progress:0, startOffset:160, days:2, critical:true },
+  // PRINTING
+  { phase:'PRINTING', task:'Develop G-Code', status:'Critical', progress:0, startOffset:118, days:3, critical:true },
+  { phase:'PRINTING', task:'Test G-Code', status:'Critical', progress:0, startOffset:119, days:2, critical:true },
+  { phase:'PRINTING', task:'Transport Printing Equipment to Site', status:'Critical', progress:0, startOffset:123, days:1, critical:true },
+  { phase:'PRINTING', task:'Print Equipment Setup', status:'Critical', progress:0, startOffset:123, days:1, critical:true },
+  { phase:'PRINTING', task:'Print Duration', status:'Critical', progress:0, startOffset:123, days:14, critical:true },
+  { phase:'PRINTING', task:'Print Cure Period', status:'Critical', progress:0, startOffset:137, days:3, critical:true },
+  { phase:'PRINTING', task:'3D Wall Sealant', status:'Critical', progress:0, startOffset:137, days:1, critical:true },
+  // SHELL
+  { phase:'SHELL', task:'Wall Cutouts', status:'Critical', progress:0, startOffset:123, days:14, critical:true },
+  { phase:'SHELL', task:'Rough-in Electrical', status:'Critical', progress:0, startOffset:123, days:14, critical:true },
+  { phase:'SHELL', task:'Insulation (Wall Cavity)', status:'Critical', progress:0, startOffset:123, days:14, critical:true },
+  { phase:'SHELL', task:'Seal Control Joints', status:'Critical', progress:0, startOffset:137, days:2, critical:true },
+  { phase:'SHELL', task:'Install Top Plate', status:'Critical', progress:0, startOffset:139, days:1, critical:true },
+  { phase:'SHELL', task:'Roof Truss Install', status:'Critical', progress:0, startOffset:147, days:1, critical:true },
+  { phase:'SHELL', task:'Roof Plywood Deck Install', status:'Critical', progress:0, startOffset:148, days:1, critical:true },
+  { phase:'SHELL', task:'Roof Sheathing and Shingles Install', status:'Critical', progress:0, startOffset:150, days:1, critical:true },
+  { phase:'SHELL', task:'Exterior Window and Door Install', status:'Critical', progress:0, startOffset:151, days:3, critical:true },
+  { phase:'SHELL', task:'Dry-In Inspection', status:'Inspection', progress:0, startOffset:153, days:1, critical:false },
+  { phase:'SHELL', task:'Exterior Painting', status:'Critical', progress:0, startOffset:153, days:1, critical:true },
+  // CORE + MEP
+  { phase:'CORE + MEP', task:'Interior Framing', status:'Critical', progress:0, startOffset:139, days:2, critical:true },
+  { phase:'CORE + MEP', task:'HVAC Duct + Air Handler Install', status:'Critical', progress:0, startOffset:154, days:1, critical:true },
+  { phase:'CORE + MEP', task:'Plumbing Top Out', status:'Critical', progress:0, startOffset:155, days:2, critical:true },
+  { phase:'CORE + MEP', task:'Electrical Top Out', status:'Critical', progress:0, startOffset:157, days:2, critical:true },
+  { phase:'CORE + MEP', task:'Roof and Interior Insulation', status:'Critical', progress:0, startOffset:159, days:1, critical:true },
+  { phase:'CORE + MEP', task:'Open Wall Inspection', status:'Inspection', progress:0, startOffset:160, days:1, critical:false },
+  { phase:'CORE + MEP', task:'Drywall', status:'Critical', progress:0, startOffset:161, days:4, critical:true },
+  { phase:'CORE + MEP', task:'Interior Painting', status:'Critical', progress:0, startOffset:165, days:2, critical:true },
+  { phase:'CORE + MEP', task:'Flooring', status:'Critical', progress:0, startOffset:167, days:2, critical:true },
+  { phase:'CORE + MEP', task:'Cabinets and Counters', status:'Critical', progress:0, startOffset:169, days:2, critical:true },
+  { phase:'CORE + MEP', task:'Electrical Trim-Out', status:'Critical', progress:0, startOffset:165, days:1, critical:true },
+  { phase:'CORE + MEP', task:'Plumbing Trim-Out', status:'Critical', progress:0, startOffset:166, days:1, critical:true },
+  { phase:'CORE + MEP', task:'HVAC Trim-Out', status:'Critical', progress:0, startOffset:167, days:1, critical:true },
+  { phase:'CORE + MEP', task:'Power and HVAC Inspection', status:'Inspection', progress:0, startOffset:168, days:1, critical:false },
+  // FINAL
+  { phase:'FINAL', task:'Trim and Décor', status:'Critical', progress:0, startOffset:170, days:4, critical:true },
+  { phase:'FINAL', task:'Exterior Fill + Grading + Topsoil', status:'Unassigned', progress:0, startOffset:170, days:2, critical:false },
+  { phase:'FINAL', task:'Irrigation System Install', status:'Unassigned', progress:0, startOffset:172, days:2, critical:false },
+  { phase:'FINAL', task:'Sod Install', status:'Unassigned', progress:0, startOffset:174, days:2, critical:false },
+  { phase:'FINAL', task:'Final Punch List', status:'Unassigned', progress:0, startOffset:177, days:2, critical:false },
+  { phase:'FINAL', task:'Final Inspection', status:'Inspection', progress:0, startOffset:179, days:1, critical:false },
+  { phase:'FINAL', task:'Closeout and Occupancy Certificate', status:'Goal', progress:0, startOffset:180, days:7, critical:true },
+]
+
+const PHASE_COLORS: Record<string,string> = {
+  'PRE-CONSTRUCTION': '#0C447C',
+  'HORIZONTAL': '#854F0B',
+  'PRINTING': '#085041',
+  'SHELL': '#3C3489',
+  'CORE + MEP': '#5F3089',
+  'FINAL': '#3B6D11',
+}
+
+const STATUS_COLORS: Record<string,{bg:string,text:string}> = {
+  'Complete':      {bg:'#EAF3DE',text:'#3B6D11'},
+  'Critical':      {bg:'#FAEEDA',text:'#854F0B'},
+  'Most Critical': {bg:'#FCEBEB',text:'#A32D2D'},
+  'Scheduled':     {bg:'#E6F1FB',text:'#185FA5'},
+  'Inspection':    {bg:'#EEEDFE',text:'#3C3489'},
+  'Goal':          {bg:'#E1F5EE',text:'#085041'},
+  'Unassigned':    {bg:'#f0f0ec',text:'#888'},
+}
+
+
+function ScheduleTab({p}: {p: any}) {
+  const [schedView, setSchedView] = React.useState<'critical'|'gantt'>('critical')
+  const tasks = p.id === 'clk-001' ? CLARKSVILLE_SCHEDULE : []
+  const phases = Array.from(new Set(tasks.map((t:any) => t.phase)))
+  const totalDays = tasks.length > 0 ? Math.max(...tasks.map((t:any) => t.startOffset + t.days)) : 0
+
+  if (tasks.length === 0) return <ScheduleBuilder projectName={p.name}/>
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="panel" style={{marginBottom:12,padding:'12px 16px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontWeight:500,fontSize:13}}>Clarksville Construction Schedule</div>
+            <div style={{fontSize:11,color:'#888',marginTop:2}}>Schedule Lead: Daniel Brown · West Lynn, Clarksville Texas · {tasks.length} tasks · {totalDays} day timeline</div>
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            {(['critical','gantt'] as const).map(v => (
+              <button key={v} onClick={()=>setSchedView(v)}
+                style={{fontSize:11,padding:'5px 12px',borderRadius:7,border:`0.5px solid ${schedView===v?'var(--mdi-green)':'rgba(0,0,0,0.15)'}`,
+                  background:schedView===v?'var(--mdi-green)':'#fff',color:schedView===v?'#fff':'#555',cursor:'pointer',fontWeight:schedView===v?500:400}}>
+                {v==='critical'?'📋 Critical Path':'📊 Gantt Chart'}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Legend */}
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}>
+          {Object.entries(STATUS_COLORS).map(([s,c]) => (
+            <span key={s} style={{fontSize:10,padding:'2px 8px',borderRadius:10,background:c.bg,color:c.text}}>{s}</span>
+          ))}
+        </div>
+      </div>
+
+      {schedView === 'critical' ? (
+        /* ── Critical Path View ── */
+        <div>
+          {phases.map(phase => {
+            const phaseTasks = tasks.filter((t:any) => t.phase === phase)
+            const phaseColor = PHASE_COLORS[phase] || '#555'
+            return (
+              <div key={phase} style={{marginBottom:10}}>
+                <div style={{background:phaseColor,color:'#fff',padding:'6px 14px',borderRadius:'8px 8px 0 0',fontSize:11,fontWeight:500,letterSpacing:'0.06em',textTransform:'uppercase',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <span>{phase}</span>
+                  <span style={{fontSize:10,opacity:0.7}}>{phaseTasks.filter((t:any)=>t.progress===100).length}/{phaseTasks.length} complete</span>
+                </div>
+                <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.1)',borderTop:'none',borderRadius:'0 0 8px 8px',overflow:'hidden'}}>
+                  {/* Column headers */}
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 90px 80px 60px 80px',padding:'5px 12px',background:'#f5f4f0',fontSize:10,color:'#888',fontWeight:500,borderBottom:'0.5px solid rgba(0,0,0,0.08)'}}>
+                    <span>Task</span><span>Status</span><span>Assigned To</span><span style={{textAlign:'center'}}>Progress</span><span style={{textAlign:'right'}}>Duration</span>
+                  </div>
+                  {phaseTasks.map((t:any, i:number) => {
+                    const sc = STATUS_COLORS[t.status] || STATUS_COLORS['Unassigned']
+                    return (
+                      <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 90px 80px 60px 80px',padding:'7px 12px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',alignItems:'center',background:t.critical&&t.progress<100?'rgba(252,235,235,0.3)':'#fff'}}>
+                        <div style={{fontSize:12,color:'#1a1a1a',display:'flex',alignItems:'center',gap:6}}>
+                          {t.critical && t.progress<100 && <span style={{fontSize:10}}>🔴</span>}
+                          {t.status==='Inspection' && <span style={{fontSize:10}}>🔍</span>}
+                          {t.status==='Goal' && <span style={{fontSize:10}}>🏁</span>}
+                          {t.status==='Complete' && <span style={{fontSize:10}}>✅</span>}
+                          {t.task}
+                        </div>
+                        <span style={{fontSize:10,padding:'2px 6px',borderRadius:8,background:sc.bg,color:sc.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t.status}</span>
+                        <span style={{fontSize:11,color:'#888'}}>D. Brown</span>
+                        <div style={{textAlign:'center'}}>
+                          <div style={{background:'#e8e8e0',borderRadius:4,height:6,overflow:'hidden'}}>
+                            <div style={{height:'100%',borderRadius:4,background:t.progress===100?'#3B6D11':t.critical?'#E24B4A':'var(--mdi-gold)',width:`${t.progress}%`}}/>
+                          </div>
+                          <div style={{fontSize:9,color:'#aaa',marginTop:2}}>{t.progress}%</div>
+                        </div>
+                        <div style={{textAlign:'right',fontSize:11,color:'#555'}}>{t.days}d</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        /* ── Gantt Chart View ── */
+        <div className="panel" style={{overflowX:'auto',padding:'14px 0'}}>
+          <div style={{minWidth: Math.max(900, totalDays * 4 + 240), position:'relative'}}>
+            {/* Today line — scoped inside the chart container */}
+            <div style={{position:'absolute',left:`${240 + 108*4}px`,top:0,bottom:0,width:2,background:'rgba(173,56,21,0.5)',pointerEvents:'none',zIndex:5}}/>
+            {/* Timeline header */}
+            <div style={{display:'flex',borderBottom:'0.5px solid rgba(0,0,0,0.1)',paddingBottom:6,marginBottom:4,paddingLeft:240}}>
+              {Array.from({length:Math.ceil(totalDays/30)},(_,i) => (
+                <div key={i} style={{width:i===Math.ceil(totalDays/30)-1?`${(totalDays%30||30)*4}px`:'120px',fontSize:10,color:'#888',flexShrink:0,textAlign:'center',borderRight:'0.5px solid rgba(0,0,0,0.06)',paddingRight:4}}>
+                  Month {i+1}
+                </div>
+              ))}
+            </div>
+            {/* Week markers */}
+            <div style={{display:'flex',marginBottom:8,paddingLeft:240,position:'relative'}}>
+              {Array.from({length:Math.ceil(totalDays/7)},(_,i) => (
+                <div key={i} style={{width:'28px',flexShrink:0,borderLeft:'0.5px solid rgba(0,0,0,0.05)',height:8}}/>
+              ))}
+            </div>
+            {/* Rows */}
+            {phases.map(phase => {
+              const phaseTasks = tasks.filter((t:any) => t.phase === phase)
+              const phaseColor = PHASE_COLORS[phase] || '#555'
+              return (
+                <React.Fragment key={phase}>
+                  <div style={{display:'flex',alignItems:'center',background:phaseColor,padding:'4px 12px',marginBottom:2}}>
+                    <div style={{width:228,fontSize:10,fontWeight:500,color:'#fff',letterSpacing:'0.06em',textTransform:'uppercase',flexShrink:0}}>{phase}</div>
+                  </div>
+                  {phaseTasks.map((t:any, i:number) => {
+                    const sc = STATUS_COLORS[t.status] || STATUS_COLORS['Unassigned']
+                    const barLeft = t.startOffset * 4
+                    const barWidth = Math.max(t.days * 4, 8)
+                    return (
+                      <div key={i} style={{display:'flex',alignItems:'center',padding:'2px 0',borderBottom:'0.5px solid rgba(0,0,0,0.04)',minHeight:28}}>
+                        <div style={{width:240,fontSize:11,color:'#1a1a1a',flexShrink:0,paddingLeft:16,paddingRight:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}}>
+                          {t.critical && t.progress<100 && <span style={{fontSize:9,color:'#E24B4A',flexShrink:0}}>●</span>}
+                          {t.task}
+                        </div>
+                        <div style={{flex:1,position:'relative',height:20}}>
+                          <div style={{position:'absolute',left:`${barLeft}px`,width:`${barWidth}px`,height:16,top:2,borderRadius:4,
+                            background:t.status==='Complete'?'#3B6D11':t.status==='Inspection'?'#534AB7':t.status==='Goal'?'#085041':t.critical?'#C9A227':'#6BAED6',
+                            opacity:t.progress===0&&t.status!=='Complete'?0.7:1,
+                            display:'flex',alignItems:'center',paddingLeft:4,overflow:'hidden'}}>
+                            {t.progress > 0 && t.progress < 100 && (
+                              <div style={{position:'absolute',left:0,top:0,height:'100%',width:`${t.progress}%`,background:'rgba(255,255,255,0.3)',borderRadius:'4px 0 0 4px'}}/>
+                            )}
+                            {barWidth > 30 && <span style={{fontSize:9,color:'#fff',whiteSpace:'nowrap',overflow:'hidden',zIndex:1,position:'relative'}}>{t.days}d</span>}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </React.Fragment>
+              )
+            })}
+
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ── Schedule Builder Form — for projects without a pre-loaded schedule ─────────
+const PHASE_OPTIONS = ['Pre-Construction','Site Work','Foundation','Framing','Mechanical/Electrical/Plumbing','Envelope','Interior','Final & Closeout','Custom']
+const STATUS_OPTIONS = ['Critical','Most Critical','Scheduled w/ Sub','Inspection','Complete','Goal','Unassigned']
+const EMPTY_TASK = { phase:'Pre-Construction', task:'', status:'Critical', progress:0, startOffset:0, days:1, critical:true }
+
+// ── parseScheduleFile — parse CSV or XLSX into ScheduleBuilder tasks ─────────
+function parseScheduleFile(
+  file: File,
+  setTasks: (t: any[]) => void,
+  setView: (v: any) => void,
+  setError: (e: string) => void,
+  setSuccess: (s: string) => void
+) {
+  setError('')
+  setSuccess('')
+  const fname = file.name.toLowerCase()
+
+  const processRows = (rows: string[][]) => {
+    if (rows.length < 2) { setError('File must have a header row and at least one data row.'); return }
+
+    // Find the header row — search first 15 rows
+    let headerRowIdx = 0
+    let header: string[] = []
+    for (let r = 0; r < Math.min(15, rows.length); r++) {
+      const rowLower = rows[r].map(h => (h||'').trim().toLowerCase())
+      // Match our template format OR the Clarksville Excel format
+      const hasTask = rowLower.some(h => h === 'task' || h === 'activity description' || h === 'task name')
+      if (hasTask) { headerRowIdx = r; header = rowLower; break }
+    }
+
+    // Detect Clarksville/Gantt format: "Activity Description" header
+    const isGanttFormat = header.some(h => h === 'activity description')
+
+    const col = (names: string[]) => names.map(n => header.indexOf(n)).find(i => i >= 0) ?? -1
+
+    let phaseCol = -1, taskCol = -1, startCol = -1, durationCol = -1
+    let statusCol = -1, progressCol = -1, criticalCol = -1
+
+    if (isGanttFormat) {
+      // Clarksville Excel / Gantt format
+      taskCol     = col(['activity description'])
+      statusCol   = col(['label', 'category', 'status'])
+      progressCol = col(['progress'])
+      startCol    = col(['start'])
+      durationCol = col(['no. days', 'days', 'duration', 'no.days', 'num days'])
+    } else {
+      // Our standard template format
+      phaseCol    = col(['phase'])
+      taskCol     = col(['task', 'task name', 'taskname', 'name', 'description'])
+      startCol    = col(['startday', 'start day', 'start', 'day', 'offset'])
+      durationCol = col(['duration', 'days', 'duration (days)', 'dur', 'no. days', 'no.days'])
+      statusCol   = col(['status'])
+      progressCol = col(['progress', 'progress (%)', 'pct', 'percent'])
+      criticalCol = col(['critical', 'is critical', 'iscritical'])
+    }
+
+    if (taskCol < 0) { setError('Could not find a Task or "Activity Description" column. Download the template to see the required format.'); return }
+    if (durationCol < 0) { setError('Could not find a Duration or "No. Days" column. Check the template format.'); return }
+
+    const STATUS_MAP: Record<string,string> = {
+      'critical': 'Critical', 'critical item needed': 'Critical',
+      'most critical': 'Most Critical',
+      'scheduled': 'Scheduled w/ Sub', 'scheduled w/ sub': 'Scheduled w/ Sub',
+      'inspection': 'Inspection', 'complete': 'Complete', 'completed': 'Complete',
+      'goal': 'Goal', 'unassigned': 'Unassigned',
+    }
+
+    const tasks: any[] = []
+    let currentPhase = 'General'
+    // Project start serial for Clarksville (Excel date 46296 = Oct 1 2025)
+    const PROJECT_START_SERIAL = 46296
+
+    for (let i = headerRowIdx + 1; i < rows.length; i++) {
+      const row = rows[i]
+      if (!row || row.every(c => !c?.trim())) continue
+
+      const taskName = row[taskCol]?.trim()
+      if (!taskName) continue
+
+      // In Gantt format, rows with no status are phase headers
+      if (isGanttFormat) {
+        const statusVal = statusCol >= 0 ? (row[statusCol]?.trim() || '') : ''
+        if (!statusVal || statusVal === '0') {
+          // This is a phase header row
+          currentPhase = taskName
+          continue
+        }
+      }
+
+      const phase = phaseCol >= 0 ? (row[phaseCol]?.trim() || currentPhase) : currentPhase
+
+      // Parse start day — handle Excel date serials
+      let start = 0
+      if (startCol >= 0 && row[startCol]?.trim()) {
+        const rawStart = row[startCol].trim()
+        if (!rawStart.startsWith('=')) {
+          const num = parseFloat(rawStart)
+          if (!isNaN(num)) {
+            start = num > 1000 ? Math.max(0, Math.round(num - PROJECT_START_SERIAL)) : Math.max(0, Math.round(num))
+          }
+        }
+      }
+
+      const durRaw = durationCol >= 0 ? row[durationCol]?.trim() : ''
+      const duration = durRaw && !durRaw.startsWith('=') ? Math.max(1, parseInt(durRaw) || 1) : 1
+
+      const rawStatus = statusCol >= 0 ? (row[statusCol]?.trim().toLowerCase() || '') : ''
+      const status = STATUS_MAP[rawStatus] || 'Scheduled w/ Sub'
+
+      let progress = 0
+      if (progressCol >= 0 && row[progressCol]?.trim()) {
+        const p = parseFloat(row[progressCol])
+        progress = !isNaN(p) ? Math.min(100, Math.max(0, p <= 1 ? Math.round(p * 100) : Math.round(p))) : 0
+      }
+
+      const rawCrit = criticalCol >= 0 ? row[criticalCol]?.trim().toLowerCase() : ''
+      const critical = rawCrit === 'true' || rawCrit === '1' || rawCrit === 'yes' || status.toLowerCase().includes('critical')
+
+      tasks.push({ phase, task: taskName.replace(/^\s+/, ''), startOffset: start, days: duration, status, progress, critical })
+    }
+
+    if (tasks.length === 0) { setError('No valid tasks found. Make sure the file has task names and durations.'); return }
+
+    setTasks(tasks)
+    setSuccess('Imported ' + tasks.length + ' tasks across ' + new Set(tasks.map(t => t.phase)).size + ' phases. Click Critical Path or Gantt to view.')
+    setView('critical')
+  }
+
+  if (fname.endsWith('.csv')) {
+    const reader = new FileReader()
+    reader.onload = e => {
+      const text = (e.target?.result as string) || ''
+      const rows = text.split(/\r?\n/).map(line => {
+        // Handle quoted CSV fields
+        const cells: string[] = []
+        let cur = '', inQ = false
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i]
+          if (ch === '"') { inQ = !inQ }
+          else if (ch === ',' && !inQ) { cells.push(cur); cur = '' }
+          else { cur += ch }
+        }
+        cells.push(cur)
+        return cells
+      })
+      processRows(rows)
+    }
+    reader.onerror = () => setError('Failed to read file.')
+    reader.readAsText(file)
+
+  } else if (fname.endsWith('.xlsx') || fname.endsWith('.xls')) {
+    // Load SheetJS dynamically then parse
+    const loadSheetJS = (): Promise<any> => {
+      return new Promise((resolve, reject) => {
+        if ((window as any).XLSX) { resolve((window as any).XLSX); return }
+        const script = document.createElement('script')
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+        script.onload = () => resolve((window as any).XLSX)
+        script.onerror = () => reject(new Error('Failed to load SheetJS'))
+        document.head.appendChild(script)
+      })
+    }
+
+    loadSheetJS().then(XLSX => {
+      const reader = new FileReader()
+      reader.onload = e => {
+        try {
+          const ab = e.target?.result as ArrayBuffer
+          const wb = XLSX.read(ab, { type: 'array' })
+          const sheetName = wb.SheetNames[0]
+          const ws = wb.Sheets[sheetName]
+          const rawRows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+          // Filter out completely empty rows
+          const rows: string[][] = rawRows
+            .filter((row: any[]) => row.some((c: any) => String(c).trim() !== ''))
+            .map((row: any[]) => row.map((c: any) => String(c).trim()))
+          processRows(rows)
+        } catch (err: any) {
+          setError('Excel parsing failed: ' + err.message)
+        }
+      }
+      reader.onerror = () => setError('Failed to read Excel file.')
+      reader.readAsArrayBuffer(file)
+    }).catch((err: any) => {
+      setError('Could not load Excel parser. Please save as .csv and re-upload.')
+    })
+  } else {
+    setError('Unsupported file type. Please upload a .csv or .xlsx file.')
+  }
+}
+
+
+function ScheduleBuilder({projectName}: {projectName:string}) {
+  const [uploadError, setUploadError] = React.useState('')
+  const [uploadSuccess, setUploadSuccess] = React.useState('')
+  const [tasks, setTasks] = React.useState<any[]>([
+    { phase:'Pre-Construction', task:'Site Survey', status:'Critical', progress:0, startOffset:0, days:2, critical:true },
+    { phase:'Pre-Construction', task:'Permit Application', status:'Critical', progress:0, startOffset:2, days:30, critical:true },
+    { phase:'Foundation', task:'Excavation', status:'Scheduled w/ Sub', progress:0, startOffset:32, days:3, critical:false },
+    { phase:'Foundation', task:'Slab Pour', status:'Critical', progress:0, startOffset:35, days:1, critical:true },
+  ])
+  const [editIdx, setEditIdx] = React.useState<number|null>(null)
+  const [draft, setDraft] = React.useState<any>({...EMPTY_TASK})
+  const [view, setView] = React.useState<'upload'|'form'|'critical'|'gantt'>('upload')
+  const [addingPhase, setAddingPhase] = React.useState('Pre-Construction')
+
+  const phases = Array.from(new Set(tasks.map(t => t.phase)))
+  const totalDays = tasks.length > 0 ? Math.max(...tasks.map(t => t.startOffset + t.days)) : 30
+
+  const saveTask = () => {
+    if (!draft.task.trim()) return
+    if (editIdx !== null) {
+      setTasks(prev => prev.map((t,i) => i===editIdx ? {...draft} : t))
+      setEditIdx(null)
+    } else {
+      setTasks(prev => [...prev, {...draft}])
+    }
+    setDraft({...EMPTY_TASK, phase: draft.phase})
+  }
+
+  const deleteTask = (idx:number) => setTasks(prev => prev.filter((_,i) => i!==idx))
+  const editTask = (idx:number) => { setDraft({...tasks[idx]}); setEditIdx(idx) }
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="panel" style={{marginBottom:12,padding:'12px 16px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontWeight:500,fontSize:13}}>{projectName} — Construction Schedule</div>
+            <div style={{fontSize:11,color:'#888',marginTop:2}}>{tasks.length} tasks · {totalDays} day timeline</div>
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            {(['upload','form','critical','gantt'] as const).map(v=>(
+              <button key={v} onClick={()=>setView(v)}
+                style={{fontSize:11,padding:'5px 12px',borderRadius:7,border:`0.5px solid ${view===v?'var(--mdi-green)':'rgba(0,0,0,0.15)'}`,
+                  background:view===v?'var(--mdi-green)':'#fff',color:view===v?'#fff':'#555',cursor:'pointer'}}>
+                {v==='upload'?'📥 Upload File':v==='form'?'✏️ Build':v==='critical'?'📋 Critical Path':'📊 Gantt'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {view === 'upload' && (
+        <div className="panel">
+          <div style={{fontWeight:500,fontSize:13,marginBottom:8}}>📥 Upload Schedule File</div>
+          <div style={{fontSize:12,color:'#555',marginBottom:16,lineHeight:1.6}}>
+            Upload a CSV or Excel file to automatically generate the Critical Path and Gantt chart.
+            Download the template below to see the required column format.
+          </div>
+
+          {/* Template download */}
+          <div style={{background:'#f0f7f4',border:'0.5px solid #b8ddd0',borderRadius:8,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div>
+              <div style={{fontSize:12,fontWeight:500,color:'var(--mdi-green)'}}>📄 Schedule Template</div>
+              <div style={{fontSize:11,color:'#888',marginTop:2}}>Clarksville 3DCP Master Schedule — 59 tasks · 5 phases · 170 day timeline</div>
+            </div>
+            <button className="btn btn-primary" style={{fontSize:11,flexShrink:0}}
+              onClick={()=>{
+                const csv = [
+                  'Phase,Task,StartDay,Duration,Status,Progress,Critical',
+                  'PRE-CONSTRUCTION,Finalize Construction Documents,0,2,Complete,100,false',
+                  'PRE-CONSTRUCTION,Design,0,62,Complete,100,false',
+                  'PRE-CONSTRUCTION,Well Permit,62,30,Critical,20,true',
+                  'PRE-CONSTRUCTION,Truss Engineering,0,30,Complete,100,false',
+                  'PRE-CONSTRUCTION,Contractor Authorization Forms,0,1,Complete,100,false',
+                  'PRE-CONSTRUCTION,Change of Contractor Form,0,1,Complete,100,false',
+                  'PRE-CONSTRUCTION,Contractor BASS Registration,0,7,Complete,100,false',
+                  'PRE-CONSTRUCTION,Residential Permit Approval,0,106,Complete,100,false',
+                  'PRE-CONSTRUCTION,FPL Utility Easement,0,1,Critical,70,true',
+                  'PRE-CONSTRUCTION,Order Materials,0,14,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Install Permit Box & Silt Fence,108,1,Most Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Earthwork Fill & Grade,109,3,Scheduled w/ Sub,10,false',
+                  'HORIZONTAL CONSTRUCTION,Gravel Fill,110,2,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Compaction Test 1,112,1,Inspection,0,false',
+                  'HORIZONTAL CONSTRUCTION,Survey Mark Corners of Slab,112,1,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Formwork,113,1,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Plumbing Rough-In,114,1,Scheduled w/ Sub,0,false',
+                  'HORIZONTAL CONSTRUCTION,Vapor Barrier,115,1,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Slab Reinforcement,115,1,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Electrical Rough-In,116,1,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Pre-pour Slab Inspection,117,1,Inspection,0,false',
+                  'HORIZONTAL CONSTRUCTION,Slab Pour,118,1,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Slab Curing Period,118,5,Critical,0,true',
+                  'HORIZONTAL CONSTRUCTION,Septic System,159,7,Critical,20,true',
+                  'HORIZONTAL CONSTRUCTION,Well System Install,160,2,Critical,0,true',
+                  'PRINTING,Develop G-Code,118,3,Critical,0,true',
+                  'PRINTING,Test G-Code,119,2,Critical,0,true',
+                  'PRINTING,Transport Printing Equipment to Site,123,1,Critical,0,true',
+                  'PRINTING,Print Equipment Setup,123,1,Critical,0,true',
+                  'PRINTING,Print Duration,123,14,Critical,0,true',
+                  'PRINTING,Print Cure Period,137,3,Critical,0,true',
+                  'PRINTING,3D Wall Sealant,137,1,Critical,0,true',
+                  'SHELL,Wall Cutouts,123,14,Critical,0,true',
+                  'SHELL,Rough-in Electrical,123,14,Critical,0,true',
+                  'SHELL,Insulation (Wall Cavity),123,14,Critical,0,true',
+                  'SHELL,Seal Control Joints,137,2,Critical,0,true',
+                  'SHELL,Install Top Plate,139,1,Critical,0,true',
+                  'SHELL,Roof Truss Install,147,1,Critical,0,true',
+                  'SHELL,Roof Plywood Deck Install,148,1,Critical,0,true',
+                  'SHELL,Roof Sheathing and Shingles Install,150,1,Critical,0,true',
+                  'SHELL,Exterior Window and Door Install,151,3,Critical,0,true',
+                  'SHELL,Dry-In Inspection,153,1,Inspection,0,false',
+                  'SHELL,Exterior Painting,153,1,Critical,0,true',
+                  'CORE + MEP,Interior Framing,139,2,Critical,0,true',
+                  'CORE + MEP,HVAC Duct + Air Handler Install,154,1,Critical,0,true',
+                  'CORE + MEP,Plumbing Top Out,155,2,Critical,0,true',
+                  'CORE + MEP,Electrical Top Out,157,2,Critical,0,true',
+                  'CORE + MEP,Roof and Interior Insulation,159,1,Critical,0,true',
+                  'CORE + MEP,Open Wall Inspection,160,1,Inspection,0,false',
+                  'CORE + MEP,Drywall,161,4,Critical,0,true',
+                  'CORE + MEP,Interior Painting,165,2,Critical,0,true',
+                  'CORE + MEP,Flooring,167,2,Critical,0,true',
+                  'CORE + MEP,Cabinets and Counters,169,2,Critical,0,true',
+                  'CORE + MEP,Electrical Trim-Out,165,1,Critical,0,true',
+                  'CORE + MEP,Plumbing Trim-Out,166,1,Critical,0,true',
+                  'CORE + MEP,HVAC Trim-Out,167,1,Critical,0,true',
+                  'CORE + MEP,Power and HVAC Inspection,168,1,Inspection,0,false',
+                  'CORE + MEP,Closeout Core + MEP,170,1,Goal,0,true'
+                ].join('\n')
+                const blob = new Blob([csv], {type:'text/csv'})
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url; a.download = 'MDOS_3DCP_Schedule_Template.csv'
+                a.click(); URL.revokeObjectURL(url)
+              }}>
+              ↓ Download Template
+            </button>
+          </div>
+
+          {/* Upload zone */}
+          <div
+            style={{border:'1.5px dashed rgba(0,0,0,0.15)',borderRadius:8,padding:'32px 20px',textAlign:'center',cursor:'pointer',background:'#fafaf8',marginBottom:12}}
+            onClick={()=>document.getElementById('schedule-file-upload')?.click()}
+            onDragOver={e=>e.preventDefault()}
+            onDrop={e=>{
+              e.preventDefault()
+              const file = e.dataTransfer.files[0]
+              if (file) parseScheduleFile(file, setTasks, setView, setUploadError, setUploadSuccess)
+            }}>
+            <div style={{fontSize:32,marginBottom:8}}>📊</div>
+            <div style={{fontWeight:500,fontSize:13,color:'#555',marginBottom:4}}>Drop CSV or Excel file here</div>
+            <div style={{fontSize:11,color:'#aaa'}}>Accepts .csv · .xlsx · .xls — max 5MB</div>
+            <input id="schedule-file-upload" type="file" accept=".csv,.xlsx,.xls" style={{display:'none'}}
+              onChange={e=>{
+                const file = e.target.files?.[0]
+                if (file) parseScheduleFile(file, setTasks, setView, setUploadError, setUploadSuccess);
+                (e.target as HTMLInputElement).value=''
+              }}/>
+          </div>
+
+          {uploadError && (
+            <div style={{background:'#FCEBEB',border:'0.5px solid #E24B4A',borderRadius:8,padding:'9px 12px',fontSize:12,color:'#A32D2D',marginBottom:8}}>
+              ⚠️ {uploadError}
+            </div>
+          )}
+          {uploadSuccess && (
+            <div style={{background:'#EAF3DE',border:'0.5px solid #639922',borderRadius:8,padding:'9px 12px',fontSize:12,color:'#27500A',marginBottom:8}}>
+              ✅ {uploadSuccess}
+            </div>
+          )}
+
+          <div style={{fontSize:11,color:'#888',marginTop:8,lineHeight:1.5}}>
+            <strong>Required columns:</strong> Phase · Task · StartDay · Duration<br/>
+            <strong>Optional columns:</strong> Status · Progress · Critical<br/>
+            Column names are case-insensitive. Extra columns are ignored.
+          </div>
+        </div>
+      )}
+      {view === 'form' && (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          {/* Task entry form */}
+          <div className="panel">
+            <div style={{fontWeight:500,fontSize:12,marginBottom:12}}>{editIdx!==null?'✏️ Edit Task':'➕ Add Task'}</div>
+            <div style={{marginBottom:8}}>
+              <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>Phase</label>
+              <select value={draft.phase} onChange={e=>setDraft((d:any)=>({...d,phase:e.target.value}))} style={{width:'100%',fontSize:12,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}>
+                {PHASE_OPTIONS.map(p=><option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:8}}>
+              <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>Task Name *</label>
+              <input value={draft.task} onChange={e=>setDraft((d:any)=>({...d,task:e.target.value}))} placeholder="e.g. Slab Pour" style={{width:'100%',fontSize:12,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}/>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+              <div>
+                <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>Start Day</label>
+                <input type="number" min={0} value={draft.startOffset} onChange={e=>setDraft((d:any)=>({...d,startOffset:parseInt(e.target.value)||0}))} style={{width:'100%',fontSize:12,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}/>
+              </div>
+              <div>
+                <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>Duration (days)</label>
+                <input type="number" min={1} value={draft.days} onChange={e=>setDraft((d:any)=>({...d,days:parseInt(e.target.value)||1}))} style={{width:'100%',fontSize:12,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}/>
+              </div>
+            </div>
+            <div style={{marginBottom:8}}>
+              <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>Status</label>
+              <select value={draft.status} onChange={e=>setDraft((d:any)=>({...d,status:e.target.value,critical:e.target.value.toLowerCase().includes('critical')}))}>
+                {STATUS_OPTIONS.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>Progress: {draft.progress}%</label>
+              <input type="range" min={0} max={100} step={10} value={draft.progress} onChange={e=>setDraft((d:any)=>({...d,progress:parseInt(e.target.value)}))} style={{width:'100%'}}/>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn btn-primary" style={{flex:1,justifyContent:'center'}} onClick={saveTask} disabled={!draft.task.trim()}>
+                {editIdx!==null?'Update Task':'Add Task'}
+              </button>
+              {editIdx!==null && <button className="btn" onClick={()=>{setEditIdx(null);setDraft({...EMPTY_TASK})}}>Cancel</button>}
+            </div>
+          </div>
+
+          {/* Task list */}
+          <div className="panel">
+            <div style={{fontWeight:500,fontSize:12,marginBottom:12}}>📋 Tasks ({tasks.length})</div>
+            {tasks.length === 0 && <div style={{fontSize:12,color:'#aaa',textAlign:'center',padding:20}}>No tasks yet — add your first task</div>}
+            <div style={{maxHeight:380,overflowY:'auto'}}>
+              {phases.map(phase => (
+                <div key={phase} style={{marginBottom:10}}>
+                  <div style={{fontSize:10,letterSpacing:'0.08em',textTransform:'uppercase',color:'#fff',background:PHASE_COLORS[phase]||'#555',padding:'3px 8px',borderRadius:5,marginBottom:4,display:'inline-block'}}>{phase}</div>
+                  {tasks.filter(t=>t.phase===phase).map((t,_i) => {
+                    const globalIdx = tasks.indexOf(t)
+                    const sc = STATUS_COLORS[t.status]||STATUS_COLORS['Unassigned']
+                    return (
+                      <div key={globalIdx} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',background:'#f5f4f0',borderRadius:7,marginBottom:4}}>
+                        {t.critical && t.progress<100 && <span style={{fontSize:10,color:'#E24B4A',flexShrink:0}}>●</span>}
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:12,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.task}</div>
+                          <div style={{fontSize:10,color:'#888'}}>Day {t.startOffset} · {t.days}d · <span style={{padding:'1px 5px',borderRadius:5,background:sc.bg,color:sc.text}}>{t.status}</span></div>
+                        </div>
+                        <button onClick={()=>editTask(globalIdx)} style={{background:'transparent',border:'none',cursor:'pointer',fontSize:13,color:'#888',padding:2}}>✏️</button>
+                        <button onClick={()=>deleteTask(globalIdx)} style={{background:'transparent',border:'none',cursor:'pointer',fontSize:13,color:'#ccc',padding:2}}>✕</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+            {tasks.length > 0 && (
+              <button className="btn btn-primary" style={{width:'100%',marginTop:10,justifyContent:'center'}} onClick={()=>setView('critical')}>
+                Generate Schedule →
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(view === 'critical' || view === 'gantt') && (
+        <BuiltScheduleView tasks={tasks} view={view} totalDays={totalDays} phases={phases}/>
+      )}
+    </div>
+  )
+}
+
+function BuiltScheduleView({tasks, view, totalDays, phases}: {tasks:any[], view:'critical'|'gantt', totalDays:number, phases:string[]}) {
+  return view === 'critical' ? (
+    <div>
+      {phases.map(phase => {
+        const phaseTasks = tasks.filter(t => t.phase === phase)
+        const phaseColor = PHASE_COLORS[phase] || '#555'
+        return (
+          <div key={phase} style={{marginBottom:10}}>
+            <div style={{background:phaseColor,color:'#fff',padding:'6px 14px',borderRadius:'8px 8px 0 0',fontSize:11,fontWeight:500,letterSpacing:'0.06em',textTransform:'uppercase',display:'flex',justifyContent:'space-between'}}>
+              <span>{phase}</span>
+              <span style={{fontSize:10,opacity:0.7}}>{phaseTasks.filter(t=>t.progress===100).length}/{phaseTasks.length} complete</span>
+            </div>
+            <div style={{background:'#fff',border:'0.5px solid rgba(0,0,0,0.1)',borderTop:'none',borderRadius:'0 0 8px 8px',overflow:'hidden'}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 90px 60px 80px',padding:'5px 12px',background:'#f5f4f0',fontSize:10,color:'#888',fontWeight:500,borderBottom:'0.5px solid rgba(0,0,0,0.08)'}}>
+                <span>Task</span><span>Status</span><span style={{textAlign:'center'}}>Progress</span><span style={{textAlign:'right'}}>Duration</span>
+              </div>
+              {phaseTasks.map((t,i) => {
+                const sc = STATUS_COLORS[t.status]||STATUS_COLORS['Unassigned']
+                return (
+                  <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 90px 60px 80px',padding:'7px 12px',borderBottom:'0.5px solid rgba(0,0,0,0.05)',alignItems:'center',background:t.critical&&t.progress<100?'rgba(252,235,235,0.3)':'#fff'}}>
+                    <div style={{fontSize:12,display:'flex',alignItems:'center',gap:6}}>
+                      {t.critical&&t.progress<100&&<span style={{fontSize:10}}>🔴</span>}
+                      {t.status==='Inspection'&&<span style={{fontSize:10}}>🔍</span>}
+                      {t.status==='Goal'&&<span style={{fontSize:10}}>🏁</span>}
+                      {t.status==='Complete'&&<span style={{fontSize:10}}>✅</span>}
+                      {t.task}
+                    </div>
+                    <span style={{fontSize:10,padding:'2px 6px',borderRadius:8,background:sc.bg,color:sc.text,whiteSpace:'nowrap'}}>{t.status}</span>
+                    <div style={{textAlign:'center'}}>
+                      <div style={{background:'#e8e8e0',borderRadius:4,height:6,overflow:'hidden'}}>
+                        <div style={{height:'100%',borderRadius:4,background:t.progress===100?'#3B6D11':t.critical?'#E24B4A':'var(--mdi-gold)',width:`${t.progress}%`}}/>
+                      </div>
+                      <div style={{fontSize:9,color:'#aaa',marginTop:2}}>{t.progress}%</div>
+                    </div>
+                    <div style={{textAlign:'right',fontSize:11,color:'#555'}}>{t.days}d</div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  ) : (
+    <div className="panel" style={{overflowX:'auto',padding:'14px 0'}}>
+      <div style={{minWidth:Math.max(900,totalDays*4+240),position:'relative'}}>
+        {/* Today line scoped inside chart */}
+        <div style={{position:'absolute',left:`${240}px`,top:32,bottom:0,width:2,background:'rgba(173,56,21,0.5)',pointerEvents:'none',zIndex:5}}/>
+        <div style={{display:'flex',borderBottom:'0.5px solid rgba(0,0,0,0.1)',paddingBottom:6,marginBottom:4,paddingLeft:240}}>
+          {Array.from({length:Math.ceil(totalDays/30)},(_,i)=>(
+            <div key={i} style={{width:'120px',fontSize:10,color:'#888',flexShrink:0,textAlign:'center',borderRight:'0.5px solid rgba(0,0,0,0.06)'}}>Month {i+1}</div>
+          ))}
+        </div>
+        {phases.map(phase=>{
+          const phaseTasks = tasks.filter(t=>t.phase===phase)
+          const phaseColor = PHASE_COLORS[phase]||'#555'
+          return (
+            <React.Fragment key={phase}>
+              <div style={{display:'flex',alignItems:'center',background:phaseColor,padding:'4px 12px',marginBottom:2}}>
+                <div style={{width:228,fontSize:10,fontWeight:500,color:'#fff',letterSpacing:'0.06em',textTransform:'uppercase',flexShrink:0}}>{phase}</div>
+              </div>
+              {phaseTasks.map((t,i)=>{
+                const barLeft = t.startOffset*4
+                const barWidth = Math.max(t.days*4,8)
+                return (
+                  <div key={i} style={{display:'flex',alignItems:'center',padding:'2px 0',borderBottom:'0.5px solid rgba(0,0,0,0.04)',minHeight:28}}>
+                    <div style={{width:240,fontSize:11,flexShrink:0,paddingLeft:16,paddingRight:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}}>
+                      {t.critical&&t.progress<100&&<span style={{fontSize:9,color:'#E24B4A',flexShrink:0}}>●</span>}
+                      {t.task}
+                    </div>
+                    <div style={{flex:1,position:'relative',height:20}}>
+                      <div style={{position:'absolute',left:`${barLeft}px`,width:`${barWidth}px`,height:16,top:2,borderRadius:4,
+                        background:t.status==='Complete'?'#3B6D11':t.status==='Inspection'?'#534AB7':t.status==='Goal'?'#085041':t.critical?'#C9A227':'#6BAED6',
+                        display:'flex',alignItems:'center',paddingLeft:4,overflow:'hidden'}}>
+                        {barWidth>30&&<span style={{fontSize:9,color:'#fff',whiteSpace:'nowrap',zIndex:1,position:'relative'}}>{t.days}d</span>}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </React.Fragment>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+
+// ── Module 02 — VERTIKAAL BIM Generation ─────────────────────────────────────
+function VertikaalView({screeningResult, screeningInput, onBack}: {screeningResult:any, screeningInput:any, onBack:()=>void}) {
+  const [step, setStep] = React.useState<'brief'|'config'|'generating'|'ready'>('brief')
+  const [bimConfig, setBimConfig] = React.useState({
+    designSeries: 'A', stories: '1', totalSqft: '1420', unitCount: '1',
+    roofType: 'gable', foundationType: 'slab', porchConfig: 'front',
+    wallThickness: '150', ceilingHeight: '9', windowPackage: 'standard',
+    exportFormats: { ifc: true, rvt: true, dwg: true, pdf: true, xlsx: true },
+    roboticTarget: 'icon', generateGCode: true,
+  })
+  const [progress, setProgress] = React.useState(0)
+  const [progressLabel, setProgressLabel] = React.useState('')
+
+  const passed = screeningResult?.overall === 'PASS' || screeningResult?.overall === 'FLAG'
+  const address = screeningInput?.address || '—'
+  const method = screeningInput?.method || '3DCP'
+  const units = parseInt(screeningInput?.units) || 1
+
+  // Simulate BIM generation progress
+  const startGeneration = () => {
+    setStep('generating')
+    setProgress(0)
+    const steps = [
+      [10, 'Parsing parcel boundary from Regrid...'],
+      [22, 'Applying zoning setbacks and height limits...'],
+      [35, 'Generating floor plan from Design Series ' + bimConfig.designSeries + '...'],
+      [48, 'Extruding 3DCP wall geometry...'],
+      [58, 'Placing window and door openings...'],
+      [67, 'Generating roof structure...'],
+      [75, 'Running structural calculations...'],
+      [83, 'Exporting IFC open BIM package...'],
+      [90, 'Generating Revit model...'],
+      [95, 'Compiling cost estimate spreadsheet...'],
+      [100, 'BIM package ready ✓'],
+    ]
+    let i = 0
+    const tick = () => {
+      if (i < steps.length) {
+        setProgress(steps[i][0] as number)
+        setProgressLabel(steps[i][1] as string)
+        i++
+        setTimeout(tick, 420)
+      } else {
+        setTimeout(() => setStep('ready'), 600)
+      }
+    }
+    tick()
+  }
+
+  const BIM_FILES = [
+    { format:'IFC',  filename:`${screeningInput?.market?.split(',')[0]?.replace(' ','_')||'Project'}_DS${bimConfig.designSeries}_v1_openBIM.ifc`,  size:'22.1 MB', color:'#EEEDFE', tc:'#3C3489' },
+    { format:'RVT',  filename:`${screeningInput?.market?.split(',')[0]?.replace(' ','_')||'Project'}_DS${bimConfig.designSeries}_v1_Revit2024.rvt`, size:'41.8 MB', color:'#E6F1FB', tc:'#0C447C' },
+    { format:'DWG',  filename:`${screeningInput?.market?.split(',')[0]?.replace(' ','_')||'Project'}_DS${bimConfig.designSeries}_v1_SitePlan.dwg`,  size:'3.4 MB',  color:'#FAEEDA', tc:'#633806' },
+    { format:'XLSX', filename:`${screeningInput?.market?.split(',')[0]?.replace(' ','_')||'Project'}_DS${bimConfig.designSeries}_v1_CostEstimate.xlsx`, size:'0.9 MB', color:'#EAF3DE', tc:'#27500A' },
+    { format:'PDF',  filename:`${screeningInput?.market?.split(',')[0]?.replace(' ','_')||'Project'}_DS${bimConfig.designSeries}_v1_PermitSet.pdf`, size:'12.6 MB', color:'#FCEBEB', tc:'#791F1F' },
+  ]
+
+  return (
+    <div style={{padding:20}}>
+      {/* Module header */}
+      <div style={{background:'var(--mdi-green)',borderRadius:10,padding:'14px 20px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <div>
+          <div style={{fontSize:10,letterSpacing:'0.1em',color:'rgba(255,255,255,0.5)',textTransform:'uppercase',marginBottom:2}}>Module 02</div>
+          <div style={{fontSize:16,fontWeight:500,color:'#fff'}}>VERTIKAAL — BIM Generation</div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.6)',marginTop:2}}>{address}</div>
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          {/* Step tracker */}
+          {['brief','config','generating','ready'].map((s,i) => (
+            <div key={s} style={{display:'flex',alignItems:'center',gap:4}}>
+              <div style={{width:24,height:24,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:500,
+                background:step===s?'var(--mdi-gold)':['brief','config','generating','ready'].indexOf(step)>i?'rgba(255,255,255,0.3)':'rgba(255,255,255,0.1)',
+                color:step===s?'var(--mdi-green)':'rgba(255,255,255,0.7)'}}>
+                {['brief','config','generating','ready'].indexOf(step)>i?'✓':i+1}
+              </div>
+              {i<3&&<div style={{width:20,height:1,background:'rgba(255,255,255,0.2)'}}/>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* M01 → M02 handoff banner */}
+      {screeningResult && (
+        <div style={{background: screeningResult.overall==='PASS'?'#EAF3DE':'#FAEEDA', border:`0.5px solid ${screeningResult.overall==='PASS'?'#639922':'#BA7517'}`, borderRadius:8,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:10}}>
+          <div style={{fontSize:20}}>{screeningResult.overall==='PASS'?'✅':'⚠️'}</div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:12,fontWeight:500,color:screeningResult.overall==='PASS'?'#27500A':'#633806'}}>
+              M01 Feasibility {screeningResult.overall==='PASS'?'Passed':'Flagged'} — Score {screeningResult.score}/100
+            </div>
+            <div style={{fontSize:11,color:screeningResult.overall==='PASS'?'#3B6D11':'#854F0B',marginTop:1}}>
+              {screeningResult.passes} dimensions passed · {screeningResult.flags} flagged · {method} method · {units} unit{units>1?'s':''}
+            </div>
+          </div>
+          <button className="btn" style={{fontSize:11}} onClick={onBack}>← Back to M01</button>
+        </div>
+      )}
+
+      {step === 'brief' && (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div className="panel">
+            <div style={{fontWeight:500,fontSize:13,marginBottom:4}}>What is VERTIKAAL?</div>
+            <div style={{fontSize:12,color:'#555',lineHeight:1.7,marginBottom:14}}>
+              VERTIKAAL is a proprietary BIM automation engine licensed by MDI. It takes the feasibility-cleared parcel data from M01 and generates a complete 5D BIM package — geometry, structure, MEP routing, cost estimate, and permit-ready drawings — in minutes rather than weeks.
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16}}>
+              {[
+                {icon:'📐', title:'Parametric Design Series', desc:"Choose from MDI's Design Series library (A-F) pre-optimized for 3DCP and SCIP"},
+                {icon:'📦', title:'Multi-format Export', desc:'IFC, Revit, DWG, PDF permit set, and XLSX cost estimate generated simultaneously'},
+                {icon:'🤖', title:'Robotic Code Ready', desc:'STL and G-code export for ICON Titan and RIC Robotics included automatically'},
+                {icon:'💰', title:'5D Cost Estimate', desc:'Live RSMeans-linked cost estimate updates as you change design parameters'},
+              ].map(f=>(
+                <div key={f.title} style={{display:'flex',gap:10,padding:'8px 10px',background:'#f5f4f0',borderRadius:8}}>
+                  <div style={{fontSize:18,flexShrink:0}}>{f.icon}</div>
+                  <div><div style={{fontSize:12,fontWeight:500}}>{f.title}</div><div style={{fontSize:11,color:'#888',marginTop:1}}>{f.desc}</div></div>
+                </div>
+              ))}
+            </div>
+            <button className="btn btn-primary" style={{width:'100%',justifyContent:'center'}} onClick={()=>setStep('config')}>
+              Configure BIM Parameters →
+            </button>
+          </div>
+          <div className="panel">
+            <div style={{fontWeight:500,fontSize:13,marginBottom:12}}>Parcel Inputs from M01</div>
+            {[
+              ['Address', address],
+              ['Construction Method', method],
+              ['Target Units', String(units)],
+              ['Lot Size', screeningInput?.lot ? screeningInput.lot + ' acres' : '—'],
+              ['Zoning', screeningInput?.zoning || '—'],
+              ['Goal', (screeningInput?.goal||'').replace(/_/g,' ')],
+              ['M01 Score', screeningResult ? screeningResult.score + '/100' : 'Not run'],
+            ].map(([l,v])=>(
+              <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)',fontSize:12}}>
+                <span style={{color:'#888'}}>{l}</span><span style={{fontWeight:500}}>{v}</span>
+              </div>
+            ))}
+            <div style={{marginTop:14,background:'#f5f4f0',borderRadius:8,padding:'10px 12px',fontSize:11,color:'#666'}}>
+              📌 VERTIKAAL uses the parcel boundary from Regrid and the zoning setbacks from Municode to automatically position the building footprint on the lot.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {step === 'config' && (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div className="panel">
+            <div style={{fontWeight:500,fontSize:13,marginBottom:12}}>🏗 Design Parameters</div>
+            {[
+              {label:'Design Series', key:'designSeries', type:'select', opts:['A','B','C','D','E','F'], desc:'A = compact SFH, B = open plan, C = courtyard, D = duplex, E = tri-plex, F = quad'},
+              {label:'Stories', key:'stories', type:'select', opts:['1','2']},
+              {label:'Total Sqft (per unit)', key:'totalSqft', type:'number', placeholder:'e.g. 1420'},
+              {label:'Roof Type', key:'roofType', type:'select', opts:['gable','hip','flat','shed']},
+              {label:'Foundation', key:'foundationType', type:'select', opts:['slab','crawlspace','basement']},
+              {label:'Porch Config', key:'porchConfig', type:'select', opts:['front','rear','wraparound','none']},
+              {label:'Wall Thickness (mm)', key:'wallThickness', type:'select', opts:['100','150','200','250']},
+              {label:'Ceiling Height (ft)', key:'ceilingHeight', type:'select', opts:['8','9','10','11','12']},
+              {label:'Window Package', key:'windowPackage', type:'select', opts:['standard','energy-plus','impact-resistant']},
+            ].map(f=>(
+              <div key={f.key} style={{marginBottom:10}}>
+                <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>{f.label}</label>
+                {f.type==='select'
+                  ? <select value={(bimConfig as any)[f.key]} onChange={e=>setBimConfig(c=>({...c,[f.key]:e.target.value}))} style={{width:'100%',fontSize:12,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}>
+                      {f.opts!.map(o=><option key={o} value={o}>{o}</option>)}
+                    </select>
+                  : <input type="number" value={(bimConfig as any)[f.key]} onChange={e=>setBimConfig(c=>({...c,[f.key]:e.target.value}))} placeholder={f.placeholder} style={{width:'100%',fontSize:12,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}/>
+                }
+                {f.desc && <div style={{fontSize:10,color:'#aaa',marginTop:2}}>{f.desc}</div>}
+              </div>
+            ))}
+          </div>
+          <div className="panel">
+            <div style={{fontWeight:500,fontSize:13,marginBottom:12}}>📦 Export Configuration</div>
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,color:'#888',marginBottom:8}}>BIM Deliverables</div>
+              {[
+                {key:'ifc',  label:'IFC — Open BIM (required)', locked:true},
+                {key:'rvt',  label:'RVT — Autodesk Revit 2024'},
+                {key:'dwg',  label:'DWG — AutoCAD Site Plan'},
+                {key:'pdf',  label:'PDF — Permit Set'},
+                {key:'xlsx', label:'XLSX — 5D Cost Estimate'},
+              ].map(f=>(
+                <div key={f.key} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'7px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
+                  <span style={{fontSize:12,color:f.locked?'#aaa':'#1a1a1a'}}>{f.label}</span>
+                  <div onClick={()=>{ if(!f.locked) setBimConfig(c=>({...c,exportFormats:{...c.exportFormats,[f.key]:!(c.exportFormats as any)[f.key]}}))}}
+                    style={{width:28,height:16,borderRadius:8,background:(bimConfig.exportFormats as any)[f.key]?'var(--mdi-gold)':'#ccc',position:'relative',cursor:f.locked?'default':'pointer',transition:'background 0.15s'}}>
+                    <div style={{width:12,height:12,borderRadius:'50%',background:'#fff',position:'absolute',top:2,left:(bimConfig.exportFormats as any)[f.key]?14:2,transition:'left 0.15s'}}/>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,color:'#888',marginBottom:8}}>Robotic Code Output</div>
+              {[
+                {key:'icon',   label:'ICON Titan — G-code print sequence'},
+                {key:'ric',    label:'RIC Robotics — Print package'},
+              ].map(f=>(
+                <div key={f.key} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'7px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
+                  <span style={{fontSize:12}}>{f.label}</span>
+                  <div onClick={()=>setBimConfig(c=>({...c,roboticTarget:f.key}))}
+                    style={{width:16,height:16,borderRadius:'50%',border:`2px solid ${bimConfig.roboticTarget===f.key?'var(--mdi-green)':'#ccc'}`,background:bimConfig.roboticTarget===f.key?'var(--mdi-green)':'transparent',cursor:'pointer'}}/>
+                </div>
+              ))}
+            </div>
+            <div style={{background:'#f5f4f0',borderRadius:8,padding:'10px 12px',marginBottom:14,fontSize:11,color:'#666'}}>
+              <div style={{fontWeight:500,marginBottom:4}}>Estimated Outputs</div>
+              <div>Design Series {bimConfig.designSeries} · {bimConfig.stories}-story · {parseInt(bimConfig.totalSqft)*units} sqft total</div>
+              <div style={{marginTop:2}}>Est. concrete: ~{Math.round(parseInt(bimConfig.totalSqft||'1000')*0.18*units)} m³ · Est. print time: {Math.round(parseInt(bimConfig.totalSqft||'1000')*0.012*units)} hrs</div>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn" style={{flex:1,justifyContent:'center'}} onClick={()=>setStep('brief')}>← Back</button>
+              <button className="btn btn-primary" style={{flex:2,justifyContent:'center'}} onClick={startGeneration}>
+                Generate BIM Package ⚡
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {step === 'generating' && (
+        <div className="panel" style={{textAlign:'center',padding:'50px 30px'}}>
+          <div style={{fontSize:36,marginBottom:16}}>⚙️</div>
+          <div style={{fontWeight:500,fontSize:15,marginBottom:6}}>Generating BIM Package...</div>
+          <div style={{fontSize:12,color:'#888',marginBottom:24,minHeight:20}}>{progressLabel}</div>
+          <div style={{background:'#e8e8e0',borderRadius:8,height:10,overflow:'hidden',maxWidth:400,margin:'0 auto 12px'}}>
+            <div style={{height:'100%',background:'var(--mdi-green)',borderRadius:8,width:`${progress}%`,transition:'width 0.4s ease'}}/>
+          </div>
+          <div style={{fontSize:13,fontWeight:500,color:'var(--mdi-green)'}}>{progress}%</div>
+          <div style={{fontSize:11,color:'#aaa',marginTop:20}}>Design Series {bimConfig.designSeries} · {bimConfig.stories}-story · {bimConfig.totalSqft} sqft</div>
+        </div>
+      )}
+
+      {step === 'ready' && (
+        <div>
+          <div style={{background:'#EAF3DE',border:'0.5px solid #639922',borderRadius:8,padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:10}}>
+            <div style={{fontSize:22}}>✅</div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:500,color:'#27500A'}}>BIM Package Generated Successfully</div>
+              <div style={{fontSize:11,color:'#3B6D11',marginTop:1}}>Design Series {bimConfig.designSeries} · {bimConfig.stories}-story · {bimConfig.totalSqft} sqft · {units} unit{units>1?'s':''} · {address}</div>
+            </div>
+            <button className="btn" style={{fontSize:11}}>📤 Share with Partner</button>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div className="panel">
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+                <div style={{fontWeight:500,fontSize:13}}>📦 BIM Deliverables</div>
+                <button className="btn btn-primary" style={{fontSize:11,padding:'4px 10px'}}>↓ Download All</button>
+              </div>
+              {BIM_FILES.map(f=>(
+                <div key={f.format} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
+                  <span style={{fontSize:10,fontWeight:500,padding:'2px 7px',borderRadius:5,background:f.color,color:f.tc,flexShrink:0,width:36,textAlign:'center'}}>{f.format}</span>
+                  <span style={{fontSize:12,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.filename}</span>
+                  <span style={{fontSize:10,color:'#aaa',flexShrink:0}}>{f.size}</span>
+                  <button className="btn" style={{padding:'3px 8px',fontSize:11,flexShrink:0}}>↓</button>
+                </div>
+              ))}
+              <div style={{marginTop:12,background:'#f5f4f0',borderRadius:8,padding:'8px 10px',fontSize:11,color:'#666'}}>
+                🔒 IP: Design Series {bimConfig.designSeries} copyright MDI. BIM exports are partner property — unrestricted download.
+              </div>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              <div className="panel" style={{marginBottom:0}}>
+                <div style={{fontWeight:500,fontSize:13,marginBottom:10}}>🤖 Robotic Code Output</div>
+                {[
+                  {label:'ICON Titan G-code', file:`print_seq_DS${bimConfig.designSeries}_v1.gcode`, size:'5.2 MB', color:'#E1F5EE', tc:'#085041'},
+                  {label:'RIC Robotics Package', file:`ric_DS${bimConfig.designSeries}_v1.pkg`, size:'3.8 MB', color:'#EEEDFE', tc:'#3C3489'},
+                  {label:'STL (printable geometry)', file:`DS${bimConfig.designSeries}_walls_v1.stl`, size:'18.4 MB', color:'#f0f0ec', tc:'#555'},
+                ].map(f=>(
+                  <div key={f.label} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
+                    <span style={{fontSize:10,padding:'2px 6px',borderRadius:5,background:f.color,color:f.tc,flexShrink:0}}>{f.label.split(' ')[0]}</span>
+                    <span style={{fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.file}</span>
+                    <span style={{fontSize:10,color:'#aaa'}}>{f.size}</span>
+                    <button className="btn" style={{padding:'3px 8px',fontSize:11}}>↓</button>
+                  </div>
+                ))}
+              </div>
+              <div className="panel" style={{marginBottom:0}}>
+                <div style={{fontWeight:500,fontSize:13,marginBottom:10}}>📊 5D Cost Summary</div>
+                {[
+                  ['Construction (3DCP)', `$${Math.round(parseInt(bimConfig.totalSqft||'1000')*units*155).toLocaleString()}`],
+                  ['Materials', `$${Math.round(parseInt(bimConfig.totalSqft||'1000')*units*62).toLocaleString()}`],
+                  ['MEP Rough-in', `$${Math.round(parseInt(bimConfig.totalSqft||'1000')*units*38).toLocaleString()}`],
+                  ['Finishes', `$${Math.round(parseInt(bimConfig.totalSqft||'1000')*units*45).toLocaleString()}`],
+                  ['Total Estimate', `$${Math.round(parseInt(bimConfig.totalSqft||'1000')*units*300).toLocaleString()}`],
+                ].map(([l,v],i)=>(
+                  <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)',fontSize:12,fontWeight:i===4?500:400,background:i===4?'transparent':'transparent'}}>
+                    <span style={{color:i===4?'#1a1a1a':'#888'}}>{l}</span>
+                    <span style={{color:i===4?'var(--mdi-green)':'#1a1a1a'}}>{v}</span>
+                  </div>
+                ))}
+              </div>
+              <button className="btn btn-primary" style={{justifyContent:'center',padding:'10px'}} onClick={()=>alert('Advancing to Module 03 — Robotic Code Generation (coming soon)')}>
+                → Advance to M03 Robotic Code
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ── AI Notes summarization — calls Claude API to summarize transcript ──────────
+async function handleNotesFile(
+  file: File,
+  projectId: string,
+  setUploading: (v:boolean)=>void,
+  setUploadProgress: (v:string)=>void,
+  setUploadFileName: (v:string)=>void,
+  setUploadPreview: (v:string)=>void,
+  setUploadMode: (v:boolean)=>void,
+  addComm: (id:string, body:string, author:string)=>void,
+  authorName: string
+) {
+  setUploadFileName(file.name)
+  setUploading(true)
+  setUploadProgress('Reading file...')
+
+  try {
+    // Read file as base64 — works for all formats including binary docx/pdf
+    const base64Data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = e => {
+        const result = e.target?.result as string || ''
+        resolve(result.includes(',') ? result.split(',')[1] : result)
+      }
+      reader.onerror = () => reject(new Error('Failed to read file'))
+      reader.readAsDataURL(file)
+    })
+
+    if (!base64Data) throw new Error('File appears to be empty')
+
+    setUploadProgress('Parsing file and sending to Claude...')
+
+    const response = await fetch('/api/summarize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        base64Data,
+        mimeType: file.type,
+        fileName: file.name,
+        projectId
+      })
+    })
+
+    if (!response.ok) {
+      const err = await response.json()
+      throw new Error(err?.error || 'Server error ' + response.status)
+    }
+
+    const data = await response.json()
+    const summary = data.summary || ''
+
+    if (!summary) throw new Error('No summary returned')
+
+    setUploadProgress('Summary ready')
+    setUploading(false)
+    setUploadPreview(summary)
+
+  } catch (err: any) {
+    setUploading(false)
+    setUploadProgress('')
+    setUploadPreview('Error: ' + (err.message || 'Something went wrong. Please try again.'))
+    setUploadFileName('error')
+  }
+}
+
+
+
+// ── MapPanel — Leaflet.js + OpenStreetMap, no API key needed ─────────────────
+// Loads Leaflet via CDN in a useEffect, renders into a div ref
+// Free: OpenStreetMap tiles, Nominatim geocoding
+
+declare global {
+  interface Window {
+    L: any
+    _mdosMap: any
+    _mdosMarker: any
+  }
+}
+
+function MapPanel({
+  coords, address, loading, onGeocode
+}: {
+  coords: {lat:number,lng:number,zoom:number} | null
+  address: string
+  loading: boolean
+  onGeocode: (addr: string) => void
+}) {
+  const mapRef = React.useRef<HTMLDivElement>(null)
+  const [searchVal, setSearchVal] = React.useState('')
+  const [mapReady, setMapReady] = React.useState(false)
+  const [mapStyle, setMapStyle] = React.useState<'street'|'satellite'>('satellite')
+
+  // Tile URL sets
+  const TILES = {
+    street: {
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attr: '© OpenStreetMap contributors',
+    },
+    satellite: {
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      attr: '© Esri, Maxar, Earthstar Geographics',
+    },
+  }
+
+  // Load Leaflet CSS + JS once
+  React.useEffect(() => {
+    if (document.getElementById('leaflet-css')) {
+      setMapReady(true)
+      return
+    }
+    const link = document.createElement('link')
+    link.id = 'leaflet-css'
+    link.rel = 'stylesheet'
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+    document.head.appendChild(link)
+
+    const script = document.createElement('script')
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+    script.onload = () => setMapReady(true)
+    document.head.appendChild(script)
+  }, [])
+
+  // Initialize map — use setTimeout to ensure container has dimensions
+  React.useEffect(() => {
+    if (!mapReady) return
+    const L = window.L
+    if (!L) return
+
+    // Destroy any existing map instance first
+    if (window._mdosMap) {
+      try { window._mdosMap.remove() } catch(e) {}
+      window._mdosMap = null
+      window._mdosMarker = null
+    }
+
+    // Delay init to ensure the container is painted and has dimensions
+    const timer = setTimeout(() => {
+      if (!mapRef.current) return
+      // Remove any leftover Leaflet state on the div
+      delete (mapRef.current as any)._leaflet_id
+
+      const map = L.map(mapRef.current, {
+        center: [30.2672, -97.7431],
+        zoom: 12,
+        zoomControl: true,
+        preferCanvas: true,
+      })
+
+      L.tileLayer(TILES.satellite.url, {
+        attribution: TILES.satellite.attr,
+        maxZoom: 21,
+      }).addTo(map)
+
+      window._mdosMap = map
+
+      // Force a size recalculation after tiles load
+      setTimeout(() => map.invalidateSize(), 300)
+    }, 150)
+
+    return () => clearTimeout(timer)
+  }, [mapReady])
+
+  // Update map when coords change
+  React.useEffect(() => {
+    if (!window._mdosMap || !coords) return
+    const L = window.L
+    if (!L) return
+
+    window._mdosMap.invalidateSize()
+    window._mdosMap.setView([coords.lat, coords.lng], coords.zoom)
+
+    if (window._mdosMarker) {
+      window._mdosMarker.setLatLng([coords.lat, coords.lng])
+    } else {
+      const icon = L.divIcon({
+        className: '',
+        html: '<div style="width:16px;height:16px;background:#C9A227;border:3px solid #0D3B2E;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      })
+      window._mdosMarker = L.marker([coords.lat, coords.lng], {icon})
+        .addTo(window._mdosMap)
+        .bindPopup(address || 'Parcel')
+        .openPopup()
+    }
+  }, [coords])
+
+  // Switch tile layer
+  React.useEffect(() => {
+    if (!window._mdosMap || !window.L) return
+    const L = window.L
+    window._mdosMap.eachLayer((layer: any) => {
+      if (layer._url) window._mdosMap.removeLayer(layer)
+    })
+    const t = TILES[mapStyle]
+    L.tileLayer(t.url, {attribution: t.attr, maxZoom: 21}).addTo(window._mdosMap)
+    setTimeout(() => window._mdosMap && window._mdosMap.invalidateSize(), 100)
+  }, [mapStyle])
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (searchVal.trim()) {
+      onGeocode(searchVal)
+      setSearchVal('')
+    }
+  }
+
+  return (
+    <div style={{width:300,background:'#fff',borderLeft:'0.5px solid rgba(0,0,0,0.1)',flexShrink:0,display:'flex',flexDirection:'column'}}>
+      {/* Header */}
+      <div style={{padding:'10px 12px',borderBottom:'0.5px solid rgba(0,0,0,0.1)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <div style={{fontWeight:500,fontSize:12,display:'flex',alignItems:'center',gap:5}}>
+          🗺 Parcel Map
+          {loading && <span style={{fontSize:10,color:'#888'}}>Locating...</span>}
+        </div>
+        <div style={{display:'flex',gap:4}}>
+          {(['satellite','street'] as const).map(s=>(
+            <button key={s} onClick={()=>setMapStyle(s)}
+              style={{fontSize:10,padding:'3px 8px',borderRadius:5,border:`0.5px solid ${mapStyle===s?'var(--mdi-green)':'rgba(0,0,0,0.15)'}`,
+                background:mapStyle===s?'var(--mdi-green)':'#fff',color:mapStyle===s?'#fff':'#555',cursor:'pointer'}}>
+              {s==='satellite'?'Satellite':'Street'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Map */}
+      <div style={{flex:1,position:'relative',minHeight:300,height:300}}>
+        {!mapReady && (
+          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',background:'#f5f4f0',fontSize:12,color:'#aaa',zIndex:1}}>
+            Loading map...
+          </div>
+        )}
+        <div ref={mapRef} style={{width:'100%',height:'100%',minHeight:300}}/>
+        {coords && (
+          <div style={{position:'absolute',bottom:8,left:8,zIndex:1000,background:'rgba(13,59,46,0.85)',color:'#fff',fontSize:10,padding:'4px 8px',borderRadius:5,maxWidth:180,lineHeight:1.4}}>
+            <div style={{fontWeight:500}}>📍 {address.split(',')[0]}</div>
+            <div style={{opacity:0.7}}>{coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Search bar */}
+      <form onSubmit={handleSearch} style={{padding:'10px 12px',borderTop:'0.5px solid rgba(0,0,0,0.1)',display:'flex',gap:6}}>
+        <input
+          value={searchVal}
+          onChange={e=>setSearchVal(e.target.value)}
+          placeholder="Search address or APN..."
+          style={{flex:1,fontSize:11,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:6}}
+        />
+        <button type="submit"
+          style={{padding:'5px 10px',background:'var(--mdi-green)',color:'#fff',border:'none',borderRadius:6,fontSize:11,cursor:'pointer',flexShrink:0}}>
+          Go
+        </button>
+      </form>
+
+      {/* Map attribution + links */}
+      <div style={{padding:'6px 12px',borderTop:'0.5px solid rgba(0,0,0,0.08)',background:'#fafaf8'}}>
+        <div style={{fontSize:9,color:'#aaa',marginBottom:4}}>
+          {mapStyle==='satellite'?'Imagery: Esri / Maxar':'Tiles: OpenStreetMap'} · Geocoding: Nominatim
+        </div>
+        {coords && (
+          <div style={{display:'flex',gap:6}}>
+            <a href={'https://www.google.com/maps?q='+coords.lat+','+coords.lng}
+              target="_blank" rel="noopener noreferrer"
+              style={{fontSize:10,color:'#185FA5',textDecoration:'none'}}>Open in Google Maps ↗</a>
+            <span style={{fontSize:10,color:'#ccc'}}>·</span>
+            <a href={'https://www.openstreetmap.org/?mlat='+coords.lat+'&mlon='+coords.lng+'#map=18/'+coords.lat+'/'+coords.lng}
+              target="_blank" rel="noopener noreferrer"
+              style={{fontSize:10,color:'#185FA5',textDecoration:'none'}}>OpenStreetMap ↗</a>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+// ── ParcelDocsPanel — top-level component (no brace issues) ──────────────────
+type ParcelDoc = {id:string,name:string,type:string,size:string,b64:string,usedInScore:boolean}
+type ScanState = Record<string,{scanning:boolean,text:string}>
+
+function ParcelDocsPanel({
+  parcelLink, parcelDocs, docScanResults,
+  setParcelDocs, setDocScanResults, setScreeningInput, projectId
+}: {
+  parcelLink: string
+  parcelDocs: ParcelDoc[]
+  docScanResults: ScanState
+  setParcelDocs: React.Dispatch<React.SetStateAction<ParcelDoc[]>>
+  setDocScanResults: React.Dispatch<React.SetStateAction<ScanState>>
+  setScreeningInput: React.Dispatch<React.SetStateAction<any>>
+  projectId: string
+}) {
+  const addDoc = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = e => {
+      const result = (e.target?.result as string) || ''
+      const b64 = result.includes(',') ? result.split(',')[1] : result
+      const doc: ParcelDoc = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        size: file.size > 1048576 ? (file.size/1048576).toFixed(1)+'MB' : Math.round(file.size/1024)+'KB',
+        b64,
+        usedInScore: false,
+      }
+      setParcelDocs(prev => [...prev, doc])
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const scanDoc = async (doc: ParcelDoc) => {
+    setDocScanResults(prev => ({...prev, [doc.id]: {scanning:true, text:''}}))
+    try {
+      const res = await fetch('/api/summarize', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({base64Data:doc.b64, mimeType:doc.type, fileName:doc.name, projectId, mode:'extract'})
+      })
+      const data = await res.json()
+      const text = data.summary || data.error || 'No data extracted'
+      setDocScanResults(prev => ({...prev, [doc.id]: {scanning:false, text}}))
+      if (text.toLowerCase().includes('lot size') || text.toLowerCase().includes('acres')) {
+        const m = text.match(/(\d+\.?\d*)\s*acres/i)
+        if (m) setScreeningInput((s: any) => ({...s, lot: m[1]}))
+      }
+      if (text.toLowerCase().includes('zoning')) {
+        const m = text.match(/zoning[:\s]+([A-Z][A-Z]?[A-Z]?-?\d?\d?[A-Z]?)/i)
+        if (m) setScreeningInput((s: any) => ({...s, zoning: m[1]}))
+      }
+    } catch(e: any) {
+      setDocScanResults(prev => ({...prev, [doc.id]: {scanning:false, text:'Scan failed: '+e.message}}))
+    }
+  }
+
+  const extColors: Record<string,{bg:string,tc:string}> = {
+    PDF:{bg:'#FCEBEB',tc:'#791F1F'}, DOCX:{bg:'#E6F1FB',tc:'#0C447C'},
+    DWG:{bg:'#FAEEDA',tc:'#633806'}, TXT:{bg:'#EAF3DE',tc:'#27500A'},
+    JPG:{bg:'#EEEDFE',tc:'#3C3489'}, PNG:{bg:'#EEEDFE',tc:'#3C3489'},
+  }
+
+  return (
+    <div style={{width:272,background:'#fff',borderLeft:'0.5px solid rgba(0,0,0,0.1)',padding:14,flexShrink:0,overflowY:'auto',display:'flex',flexDirection:'column'}}>
+      <div style={{fontWeight:500,fontSize:12,marginBottom:10,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span>📎 Parcel Documents</span>
+        <span style={{fontSize:10,color:'#aaa',fontWeight:400}}>{parcelDocs.length} file{parcelDocs.length!==1?'s':''}</span>
+      </div>
+
+      {parcelLink&&(
+        <div style={{background:'#E6F1FB',borderRadius:8,padding:'8px 10px',marginBottom:10,fontSize:11}}>
+          <div style={{color:'#888',marginBottom:2,fontSize:10}}>Saved listing URL</div>
+          <a href={parcelLink} target="_blank" rel="noopener noreferrer"
+            style={{color:'#185FA5',wordBreak:'break-all',textDecoration:'none',fontSize:11}}>
+            {parcelLink.length>50?parcelLink.slice(0,50)+'...':parcelLink}
+          </a>
+        </div>
+      )}
+
+      <div
+        style={{border:'1.5px dashed rgba(0,0,0,0.15)',borderRadius:8,padding:'14px 10px',textAlign:'center',cursor:'pointer',background:'#fafaf8',marginBottom:10}}
+        onClick={()=>document.getElementById('parcel-doc-upload')?.click()}
+        onDragOver={e=>e.preventDefault()}
+        onDrop={e=>{e.preventDefault();Array.from(e.dataTransfer.files).forEach(addDoc)}}>
+        <div style={{fontSize:20,marginBottom:4}}>📄</div>
+        <div style={{fontWeight:500,fontSize:11,color:'#555',marginBottom:2}}>Drop files or click to upload</div>
+        <div style={{fontSize:10,color:'#aaa'}}>Surveys · Arch sets · Ordinances · Reports</div>
+        <input id="parcel-doc-upload" type="file" multiple accept=".pdf,.docx,.txt,.md,.dwg,.jpg,.png" style={{display:'none'}}
+          onChange={e=>{Array.from(e.target.files||[]).forEach(addDoc);(e.target as HTMLInputElement).value=''}}/>
+      </div>
+
+      {parcelDocs.length===0&&(
+        <div style={{fontSize:11,color:'#aaa',textAlign:'center',padding:'8px 0'}}>No documents yet</div>
+      )}
+
+      {parcelDocs.map(doc=>{
+        const scan = docScanResults[doc.id]
+        const ext = (doc.name.split('.').pop()||'').toUpperCase()
+        const ec = extColors[ext]||{bg:'#f0f0ec',tc:'#555'}
+        return (
+          <div key={doc.id} style={{background:'#f5f4f0',borderRadius:8,padding:'9px 10px',marginBottom:8,border:'0.5px solid '+(doc.usedInScore?'#534AB7':'rgba(0,0,0,0.06)')}}>
+            <div style={{display:'flex',alignItems:'flex-start',gap:6,marginBottom:6}}>
+              <span style={{fontSize:9,fontWeight:500,padding:'2px 5px',borderRadius:4,background:ec.bg,color:ec.tc,flexShrink:0}}>{ext||'FILE'}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:11,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{doc.name}</div>
+                <div style={{fontSize:10,color:'#aaa'}}>{doc.size}</div>
+              </div>
+              <button onClick={()=>setParcelDocs(prev=>prev.filter(d=>d.id!==doc.id))}
+                style={{background:'transparent',border:'none',cursor:'pointer',color:'#ccc',fontSize:12,padding:0,flexShrink:0,lineHeight:1}}>✕</button>
+            </div>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <label style={{display:'flex',alignItems:'center',gap:5,fontSize:10,color:doc.usedInScore?'#534AB7':'#888',cursor:'pointer'}}>
+                <input type="checkbox" checked={doc.usedInScore}
+                  onChange={()=>setParcelDocs(prev=>prev.map(d=>d.id===doc.id?{...d,usedInScore:!d.usedInScore}:d))}
+                  style={{accentColor:'#534AB7',width:12,height:12}}/>
+                Use in score
+              </label>
+              <button onClick={()=>scanDoc(doc)} disabled={scan?.scanning}
+                style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:'0.5px solid rgba(0,0,0,0.15)',background:scan?.scanning?'#f0f0ec':'#fff',cursor:scan?.scanning?'default':'pointer',color:'#555'}}>
+                {scan?.scanning?'Scanning...':'AI Scan'}
+              </button>
+            </div>
+            {scan?.text&&!scan.scanning&&(
+              <div style={{marginTop:6,background:'#fff',borderRadius:6,padding:'7px 9px',fontSize:10,color:'#333',lineHeight:1.5,border:'0.5px solid rgba(83,74,183,0.2)',maxHeight:110,overflowY:'auto'}}>
+                {scan.text}
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {parcelDocs.some(d=>d.usedInScore)&&(
+        <div style={{marginTop:4,background:'#EEEDFE',borderRadius:8,padding:'8px 10px',fontSize:11,color:'#3C3489'}}>
+          <div style={{fontWeight:500,marginBottom:3}}>Cross-referenced in score</div>
+          {parcelDocs.filter(d=>d.usedInScore).map(d=>(
+            <div key={d.id} style={{fontSize:10,color:'#534AB7',marginTop:2}}>{'- '+d.name}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 export default function MDOSApp() {
+  const [loggedIn, setLoggedIn] = useState(false)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPass, setLoginPass] = useState('')
+  const [loginError, setLoginError] = useState('')
+  const [loginLoading, setLoginLoading] = useState(false)
   const [role, setRole] = useState<Role>('admin')
   const [view, setView] = useState<View>('dashboard')
   const [activeProject, setActiveProject] = useState(PROJECTS[0])
-  const [projectTab, setProjectTab] = useState<'overview'|'bim'|'refax'|'twin'>('overview')
+  const [commsMap, setCommsMap] = useState<Record<string,{author:string,date:string,body:string}[]>>(
+    () => Object.fromEntries(PROJECTS.map(p => [p.id, p.comms]))
+  )
+  const [newNote, setNewNote] = useState('')
+  const [noteAuthor, setNoteAuthor] = useState('')
+  const [projectTab, setProjectTab] = useState<'overview'|'bim'|'refax'|'twin'|'schedule'>('overview')
   const [notifToggles, setNotifToggles] = useState<Record<string,{teams:boolean,email:boolean}>>(() =>
     Object.fromEntries(NOTIF_EVENTS.map(e => [e.key, {teams:e.teams, email:e.email}]))
   )
   const [screeningResult, setScreeningResult] = useState<any>(null)
+  const [parcelLink, setParcelLink] = useState('')
+  const [mapCoords, setMapCoords] = useState<{lat:number,lng:number,zoom:number}|null>(null)
+  const [mapAddress, setMapAddress] = useState('')
+  const [mapLoading, setMapLoading] = useState(false)
+  const [parcelDocs, setParcelDocs] = useState<{id:string,name:string,type:string,size:string,b64:string,usedInScore:boolean}[]>([])
+  const [docScanResults, setDocScanResults] = useState<Record<string,{scanning:boolean,text:string}>>({})
   const [screeningInput, setScreeningInput] = useState({
     address: '2421 S 5th St, Austin TX 78704',
     state: 'TX', market: 'austin', goal: 'RESIDENTIAL_SFH',
-    method: 'THREEDCP', lot: '0.18', units: '4',
+    method: '3DCP', lot: '0.18', units: '4',
     bmin: '1.5', bmax: '4.5', zoning: 'SF-3',
   })
   const [uploadFlash, setUploadFlash] = useState(false)
@@ -69,6 +1724,59 @@ export default function MDOSApp() {
     setScreeningResult(null)
   }
 
+  const DEMO_CREDENTIALS = [
+    {email:'edgar@mdi.build',    pass:'mdi2024!',    role:'admin'   as Role, name:'Edgar Munoz', initials:'EM'},
+    {email:'paul@mdi.build',     pass:'mdi2024!',    role:'team'    as Role, name:'Paul Cejas',  initials:'PC'},
+    {email:'daniel@modstone.com',pass:'modstone24!', role:'partner' as Role, name:'Daniel Brown',initials:'DB'},
+    {email:'richard@wharton.edu',pass:'investor24!', role:'investor'as Role, name:'Richard B.',  initials:'RB'},
+  ]
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoginLoading(true)
+    setLoginError('')
+    setTimeout(() => {
+      const match = DEMO_CREDENTIALS.find(c => c.email===loginEmail.trim().toLowerCase() && c.pass===loginPass)
+      if (match) {
+        setRole(match.role)
+        setLoggedIn(true)
+        setView('dashboard')
+      } else {
+        setLoginError('Invalid email or password. Check credentials below.')
+      }
+      setLoginLoading(false)
+    }, 600)
+  }
+
+  const handleLogout = () => {
+    setLoggedIn(false)
+    setLoginEmail('')
+    setLoginPass('')
+    setLoginError('')
+    setRole('admin')
+    setView('dashboard')
+  }
+
+  const geocodeAddress = async (address: string) => {
+    if (!address.trim()) return
+    setMapLoading(true)
+    setMapAddress(address)
+    try {
+      const q = encodeURIComponent(address)
+      const res = await fetch(
+        'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + q,
+        {headers: {'User-Agent': 'MDOS-Platform/1.0 (edgar@mdi.build)'}}
+      )
+      const data = await res.json()
+      if (data && data[0]) {
+        setMapCoords({lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), zoom: 18})
+      }
+    } catch (e) {
+      console.error('Geocode failed', e)
+    }
+    setMapLoading(false)
+  }
+
   const goProject = (p: typeof PROJECTS[0]) => {
     setActiveProject(p)
     setProjectTab('overview')
@@ -76,6 +1784,7 @@ export default function MDOSApp() {
   }
 
   const runScreening = () => {
+    geocodeAddress(screeningInput.address)
     const lot = parseFloat(screeningInput.lot) || 0
     const units = parseInt(screeningInput.units) || 0
     const bmin = parseFloat(screeningInput.bmin) * 1_000_000
@@ -83,7 +1792,7 @@ export default function MDOSApp() {
     const zoning = screeningInput.zoning
     const method = screeningInput.method
 
-    const costPerUnit: Record<string,number> = { THREEDCP:285000, SCIP:310000, MODULAR:295000, TUNNEL_FORM:340000, HYBRID:300000 }
+    const costPerUnit: Record<string,number> = { '3DCP':285000, SCIP:310000, MODULAR:295000, TUNNEL_FORM:340000, HYBRID:300000 }
     const totalEst = (costPerUnit[method] || 300000) * units
     const budgetMid = (bmin + bmax) / 2
 
@@ -127,22 +1836,25 @@ export default function MDOSApp() {
     <div className="sidebar flex flex-col" style={{width:220,flexShrink:0,minHeight:'100vh'}}>
       <div style={{padding:'18px 16px 14px',borderBottom:'0.5px solid rgba(255,255,255,0.1)'}}>
         <div style={{fontSize:16,fontWeight:500,color:'#fff'}}>MD<span style={{color:'var(--mdi-gold)'}}>OS</span></div>
-        <div style={{fontSize:10,letterSpacing:'0.12em',color:'rgba(255,255,255,0.4)',textTransform:'uppercase',marginTop:2}}>Moderne Development, Inc.</div>
+        <div style={{fontSize:10,letterSpacing:'0.12em',color:'rgba(255,255,255,0.4)',textTransform:'uppercase',marginTop:2}}>{user.entity}</div>
       </div>
-      <div style={{padding:'10px 12px',borderBottom:'0.5px solid rgba(255,255,255,0.1)'}}>
-        <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:4}}>Viewing as</div>
-        <select value={role} onChange={e=>switchRole(e.target.value as Role)}
-          style={{width:'100%',background:'rgba(255,255,255,0.08)',border:'0.5px solid rgba(255,255,255,0.15)',color:'#fff',borderRadius:7,padding:'5px 8px',fontSize:12}}>
-          <option value="admin">MDI Admin</option>
-          <option value="team">MDI Team Member</option>
-          <option value="partner">Alpha JV Partner</option>
-          <option value="investor">Investor / Observer</option>
-        </select>
-      </div>
+      {role==='admin' && (
+        <div style={{padding:'10px 12px',borderBottom:'0.5px solid rgba(255,255,255,0.1)'}}>
+          <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:4}}>View as role</div>
+          <select value={role} onChange={e=>switchRole(e.target.value as Role)}
+            style={{width:'100%',background:'rgba(255,255,255,0.08)',border:'0.5px solid rgba(255,255,255,0.15)',color:'#fff',borderRadius:7,padding:'5px 8px',fontSize:12}}>
+            <option value="admin">MDI Admin</option>
+            <option value="team">MDI Team Member</option>
+            <option value="partner">Alpha JV Partner</option>
+            <option value="investor">Investor / Observer</option>
+          </select>
+        </div>
+      )}
       <div style={{flex:1,padding:'10px 0'}}>
         {nav.includes('dashboard') && <NavItem icon="⊞" label="Dashboard" id="dashboard" current={view} set={setView}/>}
         {nav.includes('projects') && <NavItem icon="🏗" label="Projects" id="projects" current={view} set={setView} badge={PROJECTS.length.toString()}/>}
-        {nav.includes('ifindy') && <NavItem icon="🔍" label="iFindy Screening" id="ifindy" current={view} set={setView}/>}
+        {nav.includes('ifindy') && <NavItem icon="🔍" label="Land Feasibility" id="ifindy" current={view} set={setView}/>}
+        {nav.includes('vertikaal') && <NavItem icon="📐" label="M02 VERTIKAAL BIM" id="vertikaal" current={view} set={setView}/>}
         {nav.includes('roles') && <>
           <div style={{padding:'8px 14px 4px',fontSize:10,letterSpacing:'0.1em',color:'rgba(255,255,255,0.3)',textTransform:'uppercase'}}>System</div>
           <NavItem icon="🔐" label="Roles & Access" id="roles" current={view} set={setView}/>
@@ -152,10 +1864,14 @@ export default function MDOSApp() {
       </div>
       <div style={{padding:'12px 14px',borderTop:'0.5px solid rgba(255,255,255,0.1)',display:'flex',alignItems:'center',gap:9}}>
         <div style={{width:30,height:30,borderRadius:'50%',background:'var(--mdi-gold)',color:'var(--mdi-green)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:500,flexShrink:0}}>{user.initials}</div>
-        <div>
+        <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:12,color:'#fff',fontWeight:500}}>{user.name}</div>
           <div style={{fontSize:10,color:'rgba(255,255,255,0.4)'}}>{user.role}</div>
         </div>
+        <button onClick={handleLogout} title="Log out"
+          style={{background:'transparent',border:'0.5px solid rgba(255,255,255,0.2)',borderRadius:6,color:'rgba(255,255,255,0.5)',fontSize:11,padding:'4px 7px',cursor:'pointer',flexShrink:0}}
+          onMouseOver={e=>(e.currentTarget.style.color='#fff')}
+          onMouseOut={e=>(e.currentTarget.style.color='rgba(255,255,255,0.5)')}>↩</button>
       </div>
     </div>
   )
@@ -170,14 +1886,14 @@ export default function MDOSApp() {
   )
 
   // ── Topbar ────────────────────────────────────────────────────────────────────
-  const titles: Record<View,string> = { dashboard:'Dashboard', projects:'Projects', 'project-detail':activeProject.name, ifindy:'Module 01 — iFindy Land Screening', roles:'Roles & Access', notifications:'Notifications' }
+  const titles: Record<View,string> = { dashboard:'Dashboard', projects:'Projects', 'project-detail':activeProject.name, ifindy:'Module 01 — Land Feasibility Screening', vertikaal:'Module 02 — VERTIKAAL BIM Generation', roles:'Roles & Access', notifications:'Notifications' }
   const Topbar = () => (
     <div style={{background:'#fff',borderBottom:'0.5px solid rgba(0,0,0,0.1)',padding:'10px 20px',display:'flex',alignItems:'center',gap:12}}>
       {view==='project-detail' && <button className="btn" onClick={()=>setView('projects')} style={{marginRight:4}}>← Projects</button>}
       <div style={{flex:1,fontSize:15,fontWeight:500}}>{titles[view]}</div>
       <div style={{display:'flex',alignItems:'center',gap:7,background:'#f5f4f0',border:'0.5px solid rgba(0,0,0,0.1)',borderRadius:7,padding:'5px 10px',width:180}}>
         <span style={{color:'#aaa',fontSize:13}}>⌕</span>
-        <input type="text" placeholder="Search projects…" style={{border:'none',background:'transparent',padding:0,width:'100%'}}/>
+        <input type="text" placeholder="Search projects..." style={{border:'none',background:'transparent',padding:0,width:'100%'}}/>
       </div>
       <div style={{position:'relative',cursor:'pointer',padding:5,borderRadius:7,border:'0.5px solid rgba(0,0,0,0.1)',background:'#f5f4f0'}} onClick={()=>setView('notifications')}>
         <span style={{fontSize:18}}>🔔</span>
@@ -188,7 +1904,7 @@ export default function MDOSApp() {
 
   // ── Dashboard view ────────────────────────────────────────────────────────────
   const DashboardView = () => {
-    const visibleProjects = role === 'partner' ? projects.slice(0,2) : projects.slice(0,4)
+    const visibleProjects = projects.slice(0,4)
     return (
       <div style={{padding:20}}>
         <div className="section-label">Portfolio Overview</div>
@@ -254,19 +1970,22 @@ export default function MDOSApp() {
 
   // ── Projects list ─────────────────────────────────────────────────────────────
   const ProjectsView = () => {
-    const visible = role==='partner' ? projects.slice(0,2) : projects
+    const visible = projects
     return (
       <div style={{padding:20}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
           <div className="section-label" style={{marginBottom:0}}>All Projects ({visible.length})</div>
-          {(role==='admin'||role==='team') && <button className="btn btn-primary" onClick={()=>{setShowNewProject(true);setNewProjectStep(1);setNewProjectForm(EMPTY_PROJECT_FORM);setNewProjectSuccess(false)}}>+ New Project</button>}
+          {(role==='admin'||role==='team'||role==='partner') && <button className="btn btn-primary" onClick={()=>{setShowNewProject(true);setNewProjectStep(1);setNewProjectForm(EMPTY_PROJECT_FORM);setNewProjectSuccess(false)}}>+ New Project</button>}
         </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
           {visible.map(p=>(
-            <div key={p.id} className="card" style={{padding:'14px 16px',cursor:'pointer'}} onClick={()=>goProject(p)}>
+            <div key={p.id} className="card" style={{padding:'14px 16px',cursor:'pointer',position:'relative'}} onClick={()=>goProject(p)}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
                 <div><div style={{fontWeight:500,fontSize:13}}>{p.name}</div><div style={{fontSize:11,color:'#888',marginTop:1}}>{p.market}</div></div>
-                <span className={`pill pill-${p.status.toLowerCase()}`}>{STATUS_LABELS[p.status]}</span>
+                <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                  <span className={`pill pill-${p.status.toLowerCase()}`}>{STATUS_LABELS[p.status]}</span>
+                  {(role==='admin'||role==='team'||role==='partner') && <button onClick={e=>{e.stopPropagation();deleteProject(p.id)}} style={{background:'transparent',border:'none',cursor:'pointer',fontSize:14,color:'#ccc',padding:'0 2px',lineHeight:1}} title="Delete project">✕</button>}
+                </div>
               </div>
               <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:10}}>
                 <span style={{fontSize:10,background:'#f5f4f0',border:'0.5px solid rgba(0,0,0,0.1)',borderRadius:6,padding:'2px 7px',color:'#666'}}>{p.method}</span>
@@ -317,9 +2036,9 @@ export default function MDOSApp() {
         {/* Main content */}
         <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
           <div style={{background:'#fff',borderBottom:'0.5px solid rgba(0,0,0,0.1)',display:'flex',padding:'0 16px'}}>
-            {(['overview','bim','refax','twin'] as const).map(t=>(
+            {(['overview','bim','refax','twin','schedule'] as const).map(t=>(
               <div key={t} className={`tab${projectTab===t?' active':''}`} onClick={()=>setProjectTab(t)}>
-                {t==='overview'?'⊞ Overview':t==='bim'?'📦 BIM & STL':t==='refax'?'🧠 REfax Report':'📡 Digital Twin'}
+                {t==='overview'?'⊞ Overview':t==='bim'?'📦 BIM & STL':t==='refax'?'🧠 REfax Report':t==='twin'?'📡 Digital Twin':'📅 Schedule'}
               </div>
             ))}
           </div>
@@ -328,6 +2047,7 @@ export default function MDOSApp() {
             {projectTab==='bim' && <BimTab p={p}/>}
             {projectTab==='refax' && <RefaxTab p={p}/>}
             {projectTab==='twin' && <TwinTab p={p}/>}
+          {projectTab==='schedule' && <ScheduleTab p={p}/>}
           </div>
         </div>
       </div>
@@ -346,43 +2066,175 @@ export default function MDOSApp() {
     </div>
   )
 
-  const OverviewTab = ({p}:{p:typeof PROJECTS[0]}) => (
-    <div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
-        <div className="panel" style={{marginBottom:0}}>
-          <div style={{fontWeight:500,fontSize:12,marginBottom:10}}>⏱ Timeline</div>
-          {[['Feasibility cleared',p.startDate],['BIM generated',p.bimDate||'—'],['Print started',p.printDate||'—'],['Est. completion',p.estCompletion]].map(([l,v])=>(
-            <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)',fontSize:11}}>
-              <span style={{color:'#888'}}>{l}</span><span style={{fontWeight:500}}>{v}</span>
-            </div>
-          ))}
-        </div>
-        <div className="panel" style={{marginBottom:0}}>
-          <div style={{fontWeight:500,fontSize:12,marginBottom:10}}>👥 Team</div>
-          {[['MDI Lead','Edgar Munoz'],['CTO','Paul Cejas'],['GC / Partner',p.partner],['BIM (VERTIKAAL)','R. Mechielsen']].map(([l,v])=>(
-            <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)',fontSize:11}}>
-              <span style={{color:'#888'}}>{l}</span><span style={{fontWeight:500}}>{v}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="panel">
-        <div style={{fontWeight:500,fontSize:12,marginBottom:10}}>💬 Communication Log</div>
-        {p.comms.length === 0 && <div style={{fontSize:12,color:'#aaa',textAlign:'center',padding:'20px 0'}}>No communications yet</div>}
-        {p.comms.map((c,i)=>(
-          <div key={i} style={{background:'#f5f4f0',borderRadius:8,padding:'9px 10px',marginBottom:8}}>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-              <span style={{fontWeight:500,fontSize:11}}>{c.author}</span>
-              <span style={{fontSize:10,color:'#888'}}>{c.date}</span>
-            </div>
-            <div style={{fontSize:11,color:'#555',lineHeight:1.5}}>{c.body}</div>
+  const OverviewTab = ({p}:{p:typeof PROJECTS[0]}) => {
+    const comms = commsMap[p.id] || p.comms
+    const [draft, setDraft] = useState('')
+    const [draftAuthor, setDraftAuthor] = useState('')
+    const [expanded, setExpanded] = useState(false)
+    const [uploadMode, setUploadMode] = useState(false)
+    const [uploading, setUploading] = useState(false)
+    const [uploadProgress, setUploadProgress] = useState('')
+    const [uploadFileName, setUploadFileName] = useState('')
+    const [uploadPreview, setUploadPreview] = useState('')
+    return (
+      <div style={{display:'flex',flexDirection:'column',gap:12}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div className="panel" style={{marginBottom:0}}>
+            <div style={{fontWeight:500,fontSize:12,marginBottom:10}}>⏱ Timeline</div>
+            {[['Feasibility cleared',p.startDate],['BIM generated',p.bimDate||'—'],['Print started',p.printDate||'—'],['Est. completion',p.estCompletion]].map(([l,v])=>(
+              <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)',fontSize:11}}>
+                <span style={{color:'#888'}}>{l}</span><span style={{fontWeight:500}}>{v}</span>
+              </div>
+            ))}
           </div>
-        ))}
+          <div className="panel" style={{marginBottom:0}}>
+            <div style={{fontWeight:500,fontSize:12,marginBottom:10}}>👥 Team</div>
+            {[['MDI Lead','Edgar Munoz'],['CTO','Paul Cejas'],['GC / Partner',p.partner],['BIM (VERTIKAAL)','R. Mechielsen']].map(([l,v])=>(
+              <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)',fontSize:11}}>
+                <span style={{color:'#888'}}>{l}</span><span style={{fontWeight:500}}>{v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="panel">
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <div style={{fontWeight:500,fontSize:12}}>
+              💬 Communication Log
+              <span style={{fontSize:11,color:'#aaa',fontWeight:400,marginLeft:6}}>({comms.length})</span>
+            </div>
+            <div style={{display:'flex',gap:6}}>
+              <button className="btn" style={{fontSize:11}}
+                onClick={()=>{setUploadMode(u=>!u);setExpanded(false);setUploadFileName('');setUploadPreview('')}}>
+                {uploadMode ? '✕ Cancel' : '🎙 AI Notes'}
+              </button>
+              <button className="btn" onClick={()=>{setExpanded(e=>!e);setUploadMode(false)}} style={{fontSize:11}}>
+                {expanded ? '✕ Cancel' : '+ Add Note'}
+              </button>
+            </div>
+          </div>
+          {expanded && (
+            <div style={{background:'#f0f7f4',border:'0.5px solid #b8ddd0',borderRadius:8,padding:12,marginBottom:12}}>
+              <div style={{marginBottom:8}}>
+                <label style={{display:'block',fontSize:11,color:'#555',marginBottom:3,fontWeight:500}}>Your name</label>
+                <input value={draftAuthor} onChange={e=>setDraftAuthor(e.target.value)}
+                  placeholder={user.name}
+                  style={{width:'100%',fontSize:12,padding:'5px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7,background:'#fff'}}/>
+              </div>
+              <div style={{marginBottom:10}}>
+                <label style={{display:'block',fontSize:11,color:'#555',marginBottom:3,fontWeight:500}}>Note *</label>
+                <textarea value={draft} onChange={e=>setDraft(e.target.value)}
+                  placeholder="Add a project note, update, or action item..."
+                  style={{width:'100%',height:80,resize:'vertical',fontSize:12,padding:'6px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7,background:'#fff',fontFamily:'inherit'}}/>
+              </div>
+              <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+                <button className="btn" style={{fontSize:11}} onClick={()=>{setExpanded(false);setDraft('');setDraftAuthor('')}}>Cancel</button>
+                <button className="btn btn-primary" style={{fontSize:11}} disabled={!draft.trim()}
+                  onClick={()=>{addComm(p.id,draft,draftAuthor);setExpanded(false);setDraftAuthor('')}}>
+                  Post Note
+                </button>
+              </div>
+            </div>
+          )}
+          {uploadMode && (
+            <div style={{background:'#EEF0FE',border:'0.5px solid #b0b8f0',borderRadius:8,padding:12,marginBottom:12}}>
+              <div style={{fontWeight:500,fontSize:12,marginBottom:8,color:'#3C3489',display:'flex',alignItems:'center',gap:6}}>
+                🎙 Upload AI Notetaker Transcript
+              </div>
+              <div style={{fontSize:11,color:'#534AB7',marginBottom:10,lineHeight:1.5}}>
+                Upload a .txt, .md, or .docx transcript from Otter.ai, Fireflies, Zoom, or any AI notetaker.
+                Claude will summarize it into a concise project communication log entry.
+              </div>
+              {!uploadFileName ? (
+                <div
+                  style={{border:'1.5px dashed #b0b8f0',borderRadius:8,padding:'24px 16px',textAlign:'center',cursor:'pointer',background:'rgba(255,255,255,0.6)'}}
+                  onClick={()=>document.getElementById('notes-upload-'+p.id)?.click()}
+                  onDragOver={e=>e.preventDefault()}
+                  onDrop={e=>{
+                    e.preventDefault()
+                    const file = e.dataTransfer.files[0]
+                    if (file) handleNotesFile(file, p.id, setUploading, setUploadProgress, setUploadFileName, setUploadPreview, setUploadMode, addComm, user.name)
+                  }}>
+                  <div style={{fontSize:28,marginBottom:6}}>📄</div>
+                  <div style={{fontSize:12,color:'#534AB7',fontWeight:500}}>Drop transcript file here</div>
+                  <div style={{fontSize:11,color:'#888',marginTop:3}}>.txt · .md · .docx · .pdf — max 2MB</div>
+                  <input id={'notes-upload-'+p.id} type="file" accept=".txt,.md,.docx,.pdf" style={{display:'none'}}
+                    onChange={e=>{
+                      const file = e.target.files?.[0]
+                      if (file) handleNotesFile(file, p.id, setUploading, setUploadProgress, setUploadFileName, setUploadPreview, setUploadMode, addComm, user.name)
+                    }}/>
+                </div>
+              ) : uploading ? (
+                <div style={{textAlign:'center',padding:'20px 0'}}>
+                  <div style={{fontSize:24,marginBottom:8}}>✨</div>
+                  <div style={{fontWeight:500,fontSize:12,marginBottom:4,color:'#3C3489'}}>Claude is summarizing...</div>
+                  <div style={{fontSize:11,color:'#534AB7',marginBottom:12}}>{uploadProgress}</div>
+                  <div style={{background:'rgba(255,255,255,0.6)',borderRadius:6,height:6,overflow:'hidden',maxWidth:300,margin:'0 auto'}}>
+                    <div style={{height:'100%',background:'#534AB7',borderRadius:6,width:'60%',animation:'none'}}/>
+                  </div>
+                </div>
+              ) : uploadPreview ? (
+                <div>
+                  <div style={{fontSize:11,color:'#888',marginBottom:6}}>
+                    📄 <strong>{uploadFileName}</strong> — summary ready
+                  </div>
+                  <div style={{background:'rgba(255,255,255,0.8)',borderRadius:7,padding:'10px 12px',fontSize:11,color:'#333',lineHeight:1.6,marginBottom:10,maxHeight:160,overflowY:'auto',border:'0.5px solid #b0b8f0'}}>
+                    {uploadPreview}
+                  </div>
+                  <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+                    <button className="btn" style={{fontSize:11}} onClick={()=>{setUploadFileName('');setUploadPreview('')}}>
+                      ↺ Re-upload
+                    </button>
+                    <button className="btn btn-primary" style={{fontSize:11,background:'#3C3489',borderColor:'#3C3489'}}
+                      onClick={()=>{
+                        addComm(p.id, "📋 Meeting Summary (AI):\n\n" + uploadPreview, user.name)
+                        setUploadMode(false)
+                        setUploadFileName('')
+                        setUploadPreview('')
+                      }}>
+                      Post to Log ✓
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
+          {comms.length===0 && !expanded && !uploadMode && (
+            <div style={{fontSize:12,color:'#aaa',textAlign:'center',padding:'20px 0'}}>No communications yet — add the first note</div>
+          )}
+          {comms.map((c:any,i:number)=>(
+            <div key={i} style={{background:'#f5f4f0',borderRadius:8,padding:'9px 10px',marginBottom:8,
+              borderLeft:i===0&&(commsMap[p.id]||[]).length>(p.comms||[]).length?'3px solid var(--mdi-gold)':'3px solid transparent'}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:4,alignItems:'center'}}>
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <div style={{width:20,height:20,borderRadius:'50%',background:'var(--mdi-green)',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:500,flexShrink:0}}>
+                    {c.author.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase()}
+                  </div>
+                  <span style={{fontWeight:500,fontSize:11}}>{c.author}</span>
+                </div>
+                <span style={{fontSize:10,color:'#aaa'}}>{c.date}</span>
+              </div>
+              <div style={{fontSize:11,color:'#555',lineHeight:1.5,paddingLeft:26}}>{c.body}</div>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
-type ViewMode3D = 'solid'|'wireframe'|'xray'
+
+
+// ── Model3DViewer — Three.js WebGL viewer for STL files ────────────────────────
+// Loads Three.js + STLLoader via CDN, renders with orbit/zoom/pan controls
+// Accepts either a URL (for S3-hosted files) or raw ArrayBuffer (drag-dropped)
+
+
+// ── Model3DViewer — Three.js multi-format viewer (STL, OBJ, FBX, GLTF/GLB) ──
+// No API key required. Loads all loaders via CDN on first use.
+// Supports: orbit, zoom, pan, solid/wireframe/x-ray, auto-center, grid.
+
+type ViewMode3D = 'solid' | 'wireframe' | 'xray'
+
+const MODEL_EXTS = ['.stl','.obj','.fbx','.gltf','.glb']
 const CDN = 'https://cdn.jsdelivr.net/npm'
 const THREE_VER = 'three@0.160.0'
 
@@ -447,12 +2299,12 @@ function fitCameraToObject(camera: any, object: any, THREE: any, controls: any) 
 }
 
 function Model3DViewer({url, filename, onClose}: {url?: string, filename: string, onClose: () => void}) {
-  const mountRef = useRef<HTMLDivElement>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [info, setInfo] = useState('')
-  const [viewMode, setViewMode] = useState<ViewMode3D>('solid')
-  const sceneRef = useRef<any>(null)
+  const mountRef = React.useRef<HTMLDivElement>(null)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+  const [info, setInfo] = React.useState('')
+  const [viewMode, setViewMode] = React.useState<ViewMode3D>('solid')
+  const sceneRef = React.useRef<any>(null)
 
   const ext = filename.toLowerCase().match(/\.\w+$/)?.[0] || '.stl'
   const formatLabel = ext === '.stl' ? 'STL' : ext === '.obj' ? 'OBJ' : ext === '.fbx' ? 'FBX' : ext.includes('glt') || ext === '.glb' ? 'GLTF/GLB' : ext.toUpperCase().slice(1)
@@ -460,7 +2312,7 @@ function Model3DViewer({url, filename, onClose}: {url?: string, filename: string
     '.stl': '#9FE1CB', '.obj': '#FAC775', '.fbx': '#AFA9EC', '.gltf': '#85B7EB', '.glb': '#85B7EB'
   }
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!mountRef.current || !url) { setLoading(false); return }
     let animId: number
     let renderer: any
@@ -606,7 +2458,7 @@ function Model3DViewer({url, filename, onClose}: {url?: string, filename: string
   }, [url, filename])
 
   // View mode toggle
-  useEffect(() => {
+  React.useEffect(() => {
     const s = sceneRef.current
     if (!s) return
     s.object.traverse((child: any) => {
@@ -693,7 +2545,7 @@ function Model3DViewer({url, filename, onClose}: {url?: string, filename: string
 
 
   const BimTab = ({p}:{p:typeof PROJECTS[0]}) => {
-    const [activeSTL, setActiveSTL] = useState<{url:string,name:string}|null>(null)
+    const [activeSTL, setActiveSTL] = React.useState<{url:string,name:string}|null>(null)
     // Demo STL URLs - replace with real S3 signed URLs in production
     const getSTLUrl = (filename: string) => {
       // For demo: return null (shows upload prompt)
@@ -824,12 +2676,12 @@ function Model3DViewer({url, filename, onClose}: {url?: string, filename: string
           <div style={{fontSize:11,color:'#888',marginBottom:12}}>Report for: {r.address} · Goal: Residential SFH · Generated {r.generated}</div>
           <div style={{background:'#E1F5EE',borderRadius:8,padding:'10px 12px',borderLeft:'3px solid #1D9E75',marginBottom:12}}>
             <div style={{fontSize:11,fontWeight:500,color:'#085041',marginBottom:4}}>🏗 3DCP-Specific Price Projections</div>
-            <div style={{fontSize:11,color:'#0F6E56',lineHeight:1.5}}>Projected unit values of ${(r.projectedUnitMin/1000).toFixed(0)}K–${(r.projectedUnitMax/1000).toFixed(0)}K for 3D-printed homes in this submarket. REAI projects a {r.pricePremiumPct}% price premium over traditional construction — directly supports MDI project feasibility and investor narrative. 5-year appreciation outlook: +{r.appreciation5yr}% driven by supply constraint and buyer demographics.</div>
+            <div style={{fontSize:11,color:'#0F6E56',lineHeight:1.5}}>Projected unit values of ${(r.projectedUnitMin/1000).toFixed(0)}K-${(r.projectedUnitMax/1000).toFixed(0)}K for 3D-printed homes in this submarket. REAI projects a {r.pricePremiumPct}% price premium over traditional construction — directly supports MDI project feasibility and investor narrative. 5-year appreciation outlook: +{r.appreciation5yr}% driven by supply constraint and buyer demographics.</div>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12}}>
             {[
               {l:'Median sale price',v:`$${r.medianSalePricePerSqft}/sqft`,s:`Zillow HVI: +${r.appreciationYoy}% YoY`},
-              {l:'Projected unit range',v:`$${(r.projectedUnitMin/1000).toFixed(0)}K–$${(r.projectedUnitMax/1000).toFixed(0)}K`,s:'3DCP new build comps'},
+              {l:'Projected unit range',v:`$${(r.projectedUnitMin/1000).toFixed(0)}K-$${(r.projectedUnitMax/1000).toFixed(0)}K`,s:'3DCP new build comps'},
               {l:'Avg monthly rent',v:`$${r.avgMonthlyRent.toLocaleString()}`,s:`+${r.rentGrowthYoy}% YoY`},
               {l:'Crime index (CAP)',v:`${r.crimeIndexCap} / 100`,s:'Below MDI threshold (80)'},
               {l:'School rating (Niche)',v:r.schoolRating,s:'Above MDI threshold (C)'},
@@ -893,7 +2745,7 @@ function Model3DViewer({url, filename, onClose}: {url?: string, filename: string
     <div style={{display:'flex',flex:1,overflow:'hidden'}}>
       <div style={{width:260,background:'#fff',borderRight:'0.5px solid rgba(0,0,0,0.1)',padding:16,flexShrink:0,overflowY:'auto'}}>
         <FormSection title="Parcel Identification">
-          <Field label="Address or APN"><input value={screeningInput.address} onChange={e=>setScreeningInput(s=>({...s,address:e.target.value}))}/></Field>
+          <Field label="Address or APN"><input value={screeningInput.address} onChange={e=>setScreeningInput(s=>({...s,address:e.target.value}))} onBlur={e=>{ if(e.target.value.length > 8) geocodeAddress(e.target.value) }}/></Field>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
             <Field label="State"><select value={screeningInput.state} onChange={e=>setScreeningInput(s=>({...s,state:e.target.value}))}><option value="TX">Texas</option><option value="FL">Florida</option><option value="UK">UK</option></select></Field>
             <Field label="Market"><select value={screeningInput.market} onChange={e=>setScreeningInput(s=>({...s,market:e.target.value}))}><option value="austin">Austin</option><option value="orlando">Orlando</option><option value="birmingham">Birmingham</option></select></Field>
@@ -917,7 +2769,7 @@ function Model3DViewer({url, filename, onClose}: {url?: string, filename: string
         </FormSection>
         <FormSection title="Construction Method">
           <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-            {[['THREEDCP','3DCP'],['SCIP','SCIP'],['MODULAR','Modular'],['TUNNEL_FORM','Tunnel-form']].map(([v,l])=>(
+            {[['3DCP','3DCP'],['SCIP','SCIP'],['MODULAR','Modular'],['TUNNEL_FORM','Tunnel-form']].map(([v,l])=>(
               <div key={v} onClick={()=>setScreeningInput(s=>({...s,method:v}))} style={{fontSize:11,padding:'3px 9px',border:`0.5px solid ${screeningInput.method===v?'var(--mdi-green)':'rgba(0,0,0,0.15)'}`,borderRadius:10,cursor:'pointer',background:screeningInput.method===v?'var(--mdi-green)':'#fff',color:screeningInput.method===v?'#fff':'#666'}}>{l}</div>
             ))}
           </div>
@@ -942,7 +2794,10 @@ function Model3DViewer({url, filename, onClose}: {url?: string, filename: string
               <div>
                 <div style={{fontWeight:500,fontSize:14}}>{screeningResult.overall==='PASS'?'Clears Feasibility':screeningResult.overall==='FLAG'?screeningResult.autoRej?'Auto-rejected':'Flagged for MDI Review':'Auto-rejected'}</div>
                 <div style={{fontSize:11,color:'#888',marginTop:3}}>{screeningResult.passes} pass · {screeningResult.flags} flag · {screeningResult.fails} fail</div>
-                <div style={{marginTop:6,display:'flex',gap:4,flexWrap:'wrap'}}>
+                {parcelDocs.filter(d=>d.usedInScore).length>0&&(
+                 <div style={{fontSize:10,color:'#534AB7',marginTop:4}}>📎 {parcelDocs.filter(d=>d.usedInScore).length} doc(s) cross-referenced</div>
+               )}
+               <div style={{marginTop:6,display:'flex',gap:4,flexWrap:'wrap'}}>
                   {[screeningInput.method,screeningInput.state,screeningInput.goal.split('_')[0]].map(t=>(
                     <span key={t} style={{fontSize:10,padding:'2px 7px',borderRadius:8,background:'#E1F5EE',color:'#085041'}}>{t}</span>
                   ))}
@@ -952,7 +2807,7 @@ function Model3DViewer({url, filename, onClose}: {url?: string, filename: string
             <div style={{display:'flex',gap:8,marginBottom:14}}>
               <button className="btn" style={{flex:1,justifyContent:'center'}}>📄 Land Report</button>
               <button className="btn" style={{flex:1,justifyContent:'center'}}>🧠 REfax Request</button>
-              <button className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>→ Advance to M02</button>
+              <button className="btn btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>setView('vertikaal')}>→ Advance to M02</button>
             </div>
             <div className="section-label">Scoring Dimensions</div>
             {screeningResult.dims.map((d:any)=>(
@@ -981,16 +2836,23 @@ function Model3DViewer({url, filename, onClose}: {url?: string, filename: string
           </>
         )}
       </div>
+      <MapPanel coords={mapCoords} address={mapAddress} loading={mapLoading} onGeocode={geocodeAddress}/>
+      <ParcelDocsPanel
+        parcelLink={parcelLink} parcelDocs={parcelDocs}
+        docScanResults={docScanResults} setParcelDocs={setParcelDocs}
+        setDocScanResults={setDocScanResults} setScreeningInput={setScreeningInput}
+        projectId={screeningInput.address||'parcel'}
+      />
     </div>
   )
 
-  const FormSection = ({title,children}:{title:string,children:ReactNode}) => (
+  const FormSection = ({title,children}:{title:string,children:React.ReactNode}) => (
     <div style={{marginBottom:18}}>
       <div style={{fontSize:10,letterSpacing:'0.1em',textTransform:'uppercase',color:'#888',marginBottom:10,paddingBottom:6,borderBottom:'0.5px solid rgba(0,0,0,0.08)'}}>{title}</div>
       {children}
     </div>
   )
-  const Field = ({label,children}:{label:string,children:ReactNode}) => (
+  const Field = ({label,children}:{label:string,children:React.ReactNode}) => (
     <div style={{marginBottom:8}}><label style={{display:'block',fontSize:11,color:'#888',marginBottom:3}}>{label}</label>{children}</div>
   )
 
@@ -1024,13 +2886,13 @@ function Model3DViewer({url, filename, onClose}: {url?: string, filename: string
               <div style={{display:'flex',gap:5}}>
                 {(['admin','team','partner','investor'] as Role[]).map(r=>{
                   const has = MODULE_ACCESS[r][mi]
-                  return <div key={r} style={{width:28,height:18,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,background:has?'#EAF3DE':'#f5f4f0',color:has?'#3B6D11':'#ccc'}}>{has?'✓':'–'}</div>
+                  return <div key={r} style={{width:28,height:18,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,background:has?'#EAF3DE':'#f5f4f0',color:has?'#3B6D11':'#ccc'}}>{has?'✓':'-'}</div>
                 })}
               </div>
             </div>
           ))}
           <div style={{marginTop:10,background:'#f5f4f0',borderRadius:8,padding:'8px 10px',fontSize:11,color:'#666'}}>
-            {role==='admin'?'Full access to all 6 modules plus system configuration.':role==='team'?'Modules 01–05 on assigned projects. No partner management.':role==='partner'?'Project-scoped: M01, M02, M04, M05 for own project only.':'Read-only: M01 summary and M05 progress view only.'}
+            {role==='admin'?'Full access to all 6 modules plus system configuration.':role==='team'?'Modules 01-05 on assigned projects. No partner management.':role==='partner'?'Project-scoped: M01, M02, M04, M05 for own project only.':'Read-only: M01 summary and M05 progress view only.'}
           </div>
         </div>
       </div>
@@ -1104,7 +2966,7 @@ function Model3DViewer({url, filename, onClose}: {url?: string, filename: string
       market: newProjectForm.city + (newProjectForm.city ? ', ' : '') + newProjectForm.state,
       state: newProjectForm.state,
       goal: newProjectForm.goal,
-      method: newProjectForm.method === 'THREEDCP' ? '3DCP' : newProjectForm.method === 'SCIP' ? 'SCIP' : newProjectForm.method === 'MODULAR' ? 'Modular' : 'Tunnel-form',
+      method: newProjectForm.method === '3DCP' ? '3DCP' : newProjectForm.method === 'SCIP' ? 'SCIP' : newProjectForm.method === 'MODULAR' ? 'Modular' : 'Tunnel-form',
       vendor: 'TBD',
       status: 'SCREENING',
       pct: 0,
@@ -1127,171 +2989,106 @@ function Model3DViewer({url, filename, onClose}: {url?: string, filename: string
     setTimeout(() => { setShowNewProject(false); setView('projects') }, 1800)
   }
 
-  const NPField = ({label, children}: {label:string, children:ReactNode}) => (
-    <div style={{marginBottom:12}}>
-      <label style={{display:'block',fontSize:11,color:'#888',marginBottom:3,fontWeight:500}}>{label}</label>
-      {children}
+  const deleteProject = (id: string) => {
+    if (!confirm('Delete this project? This cannot be undone.')) return
+    setProjects(prev => prev.filter(p => p.id !== id))
+    if (activeProject?.id === id) setView('projects')
+  }
+
+  const addComm = (projectId: string, body: string, author: string) => {
+    if (!body.trim()) return
+    const entry = {
+      author: author.trim() || user.name,
+      date: new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}),
+      body: body.trim(),
+    }
+    setCommsMap(prev => ({
+      ...prev,
+      [projectId]: [entry, ...(prev[projectId] || [])],
+    }))
+    setNewNote('')
+  }
+
+  // ── App shell  // ── App shell ─────────────────────────────────────────────────────────────────
+  if (!loggedIn) return (
+    <div style={{minHeight:'100vh',background:'var(--mdi-green)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:20}}>
+      {/* Logo */}
+      <div style={{marginBottom:32,textAlign:'center'}}>
+        <div style={{fontSize:36,fontWeight:600,color:'#fff',letterSpacing:-1}}>MD<span style={{color:'var(--mdi-gold)'}}>OS</span></div>
+        <div style={{fontSize:11,letterSpacing:'0.15em',color:'rgba(255,255,255,0.45)',textTransform:'uppercase',marginTop:4}}>Moderne Development, Inc.</div>
+      </div>
+
+      {/* Login card */}
+      <div style={{background:'#fff',borderRadius:12,padding:'32px 36px',width:'100%',maxWidth:400,boxShadow:'0 24px 64px rgba(0,0,0,0.3)'}}>
+        <div style={{fontWeight:600,fontSize:18,color:'#1a1a1a',marginBottom:4}}>Sign in to MDOS</div>
+        <div style={{fontSize:13,color:'#888',marginBottom:24}}>Alpha Platform — Authorized users only</div>
+
+        <form onSubmit={handleLogin}>
+          <div style={{marginBottom:14}}>
+            <label style={{display:'block',fontSize:12,fontWeight:500,color:'#555',marginBottom:5}}>Email address</label>
+            <input type="email" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)}
+              placeholder="you@example.com" required autoFocus
+              style={{width:'100%',fontSize:13,padding:'9px 12px',border:'1px solid rgba(0,0,0,0.2)',borderRadius:8,outline:'none',boxSizing:'border-box' as any}}/>
+          </div>
+          <div style={{marginBottom:20}}>
+            <label style={{display:'block',fontSize:12,fontWeight:500,color:'#555',marginBottom:5}}>Password</label>
+            <input type="password" value={loginPass} onChange={e=>setLoginPass(e.target.value)}
+              placeholder="Enter your password" required
+              style={{width:'100%',fontSize:13,padding:'9px 12px',border:'1px solid rgba(0,0,0,0.2)',borderRadius:8,outline:'none',boxSizing:'border-box' as any}}/>
+          </div>
+
+          {loginError && (
+            <div style={{background:'#FCEBEB',border:'0.5px solid #E24B4A',borderRadius:8,padding:'9px 12px',fontSize:12,color:'#A32D2D',marginBottom:16}}>
+              {loginError}
+            </div>
+          )}
+
+          <button type="submit" disabled={loginLoading}
+            style={{width:'100%',padding:'11px',background:'var(--mdi-green)',color:'#fff',border:'none',borderRadius:8,fontSize:14,fontWeight:500,cursor:loginLoading?'default':'pointer',opacity:loginLoading?0.7:1}}>
+            {loginLoading ? 'Signing in...' : 'Sign in'}
+          </button>
+        </form>
+
+        {/* Demo credentials table */}
+        <div style={{marginTop:24,borderTop:'0.5px solid rgba(0,0,0,0.1)',paddingTop:20}}>
+          <div style={{fontSize:11,fontWeight:500,color:'#888',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.08em'}}>Demo Credentials</div>
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {[
+              {label:'MDI Admin',        email:'edgar@mdi.build',     pass:'mdi2024!',    color:'#3C3489',tc:'#CECBF6'},
+              {label:'MDI Team',         email:'paul@mdi.build',      pass:'mdi2024!',    color:'#0C447C',tc:'#B5D4F4'},
+              {label:'Alpha JV Partner', email:'daniel@modstone.com', pass:'modstone24!', color:'#3B6D11',tc:'#C0DD97'},
+              {label:'Investor',         email:'richard@wharton.edu', pass:'investor24!', color:'#5F5E5A',tc:'#D3D1C7'},
+            ].map(c=>(
+              <div key={c.email}
+                style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',background:'#f5f4f0',borderRadius:7,cursor:'pointer'}}
+                onClick={()=>{setLoginEmail(c.email);setLoginPass(c.pass)}}>
+                <span style={{fontSize:10,padding:'2px 7px',borderRadius:8,background:c.color,color:c.tc,fontWeight:500,flexShrink:0}}>{c.label}</span>
+                <span style={{fontSize:11,color:'#555',flex:1}}>{c.email}</span>
+                <span style={{fontSize:10,color:'#aaa',fontFamily:'monospace'}}>{c.pass}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{fontSize:10,color:'#aaa',marginTop:8,textAlign:'center'}}>Click a row to auto-fill credentials</div>
+        </div>
+      </div>
+
+      <div style={{marginTop:24,fontSize:11,color:'rgba(255,255,255,0.3)'}}>MDOS Platform Alpha · Moderne Development, Inc. · mdi.build</div>
     </div>
   )
 
-  const NewProjectModal = () => {
-    if (!showNewProject) return null
-    const stepTitles = ['Project Identity','Site Parameters','Financial Setup']
-    const npf = (key: keyof typeof newProjectForm) => newProjectForm[key]
-    const setF = (key: keyof typeof newProjectForm, val: string) =>
-      setNewProjectForm(f => ({...f, [key]: val}))
-
-    return (
-      <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}
-        onClick={e => { if (e.target === e.currentTarget) setShowNewProject(false) }}>
-        <div style={{background:'#fff',borderRadius:12,width:520,maxHeight:'88vh',overflow:'hidden',display:'flex',flexDirection:'column',boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}}>
-          {/* Modal header */}
-          <div style={{background:'var(--mdi-green)',padding:'16px 20px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <div>
-              <div style={{fontSize:11,color:'rgba(255,255,255,0.5)',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:2}}>New Project</div>
-              <div style={{fontSize:15,fontWeight:500,color:'#fff'}}>{stepTitles[newProjectStep-1]}</div>
-            </div>
-            <div style={{display:'flex',gap:6,alignItems:'center'}}>
-              {[1,2,3].map(s => (
-                <div key={s} style={{width:24,height:4,borderRadius:2,background:s<=newProjectStep?'var(--mdi-gold)':'rgba(255,255,255,0.2)'}}/>
-              ))}
-              <button onClick={()=>setShowNewProject(false)} style={{marginLeft:10,background:'transparent',border:'none',color:'rgba(255,255,255,0.6)',fontSize:18,cursor:'pointer',lineHeight:1}}>✕</button>
-            </div>
-          </div>
-
-          {/* Modal body */}
-          <div style={{flex:1,overflowY:'auto',padding:'20px 24px'}}>
-            {newProjectSuccess ? (
-              <div style={{textAlign:'center',padding:'40px 20px'}}>
-                <div style={{fontSize:40,marginBottom:12}}>✅</div>
-                <div style={{fontWeight:500,fontSize:15,marginBottom:6}}>Project Created</div>
-                <div style={{fontSize:12,color:'#888'}}>{newProjectForm.name} has been added to your pipeline and is ready for iFindy screening.</div>
-              </div>
-            ) : newProjectStep === 1 ? (
-              <>
-                <NPField label="Project Name *">
-                  <input value={npf('name')} onChange={e=>setF('name',e.target.value)} placeholder="e.g. Clarksville Phase 2"/>
-                </NPField>
-                <NPField label="Full Address *">
-                  <input value={npf('address')} onChange={e=>setF('address',e.target.value)} placeholder="e.g. 123 Main St, Austin TX 78701"/>
-                </NPField>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                  <NPField label="City">
-                    <input value={npf('city')} onChange={e=>setF('city',e.target.value)} placeholder="Austin"/>
-                  </NPField>
-                  <NPField label="State">
-                    <select value={npf('state')} onChange={e=>setF('state',e.target.value)}>
-                      <option value="TX">Texas</option>
-                      <option value="FL">Florida</option>
-                      <option value="UK">UK</option>
-                      <option value="KAZ">Kazakhstan</option>
-                      <option value="KSA">Saudi Arabia</option>
-                      <option value="OTHER">Other</option>
-                    </select>
-                  </NPField>
-                </div>
-                <NPField label="APN (Assessor Parcel Number)">
-                  <input value={npf('apn')} onChange={e=>setF('apn',e.target.value)} placeholder="e.g. 0103050202 (optional)"/>
-                </NPField>
-                <NPField label="Alpha JV Partner / GC">
-                  <input value={npf('partner')} onChange={e=>setF('partner',e.target.value)} placeholder="e.g. Modstone / Daniel Brown"/>
-                </NPField>
-                <NPField label="Development Goal">
-                  <select value={npf('goal')} onChange={e=>setF('goal',e.target.value)}>
-                    <option value="RESIDENTIAL_SFH">Residential SFH</option>
-                    <option value="MULTIFAMILY_BTR">Multifamily / BTR</option>
-                    <option value="HOSPITALITY_STR">Hospitality / STR</option>
-                    <option value="MIXED_USE">Mixed-use</option>
-                    <option value="INDUSTRIAL_LOGISTICS">Industrial / Logistics</option>
-                  </select>
-                </NPField>
-              </>
-            ) : newProjectStep === 2 ? (
-              <>
-                <NPField label="Primary Construction Method">
-                  <select value={npf('method')} onChange={e=>setF('method',e.target.value)}>
-                    <option value="THREEDCP">3DCP — 3D Concrete Printing</option>
-                    <option value="SCIP">SCIP — Structural Concrete Insulated Panel</option>
-                    <option value="MODULAR">Modular</option>
-                    <option value="TUNNEL_FORM">Tunnel-form</option>
-                    <option value="HYBRID">Hybrid</option>
-                  </select>
-                </NPField>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                  <NPField label="Target Units">
-                    <input type="number" value={npf('units')} onChange={e=>setF('units',e.target.value)} placeholder="e.g. 4"/>
-                  </NPField>
-                  <NPField label="Lot Size (acres)">
-                    <input type="number" value={npf('lotAcres')} onChange={e=>setF('lotAcres',e.target.value)} placeholder="e.g. 0.18"/>
-                  </NPField>
-                </div>
-                <NPField label="Zoning Code">
-                  <input value={npf('zoning')} onChange={e=>setF('zoning',e.target.value)} placeholder="e.g. SF-3, MF-2, PUD"/>
-                </NPField>
-                <NPField label="Initial Notes">
-                  <textarea value={npf('notes')} onChange={e=>setF('notes',e.target.value)}
-                    placeholder="Any relevant context — deed restrictions, water access, infrastructure notes, etc."
-                    style={{width:'100%',height:72,resize:'none',fontSize:12,padding:'6px 8px',border:'0.5px solid rgba(0,0,0,0.15)',borderRadius:7}}/>
-                </NPField>
-              </>
-            ) : (
-              <>
-                <div style={{background:'#f5f4f0',borderRadius:8,padding:'10px 12px',marginBottom:16,fontSize:11,color:'#666'}}>
-                  Budget range is used in the Module 01 iFindy feasibility scoring to evaluate developer budget vs. estimated construction cost.
-                </div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                  <NPField label="Budget Min ($M)">
-                    <input type="number" value={npf('budgetMin')} onChange={e=>setF('budgetMin',e.target.value)} placeholder="e.g. 1.5"/>
-                  </NPField>
-                  <NPField label="Budget Max ($M)">
-                    <input type="number" value={npf('budgetMax')} onChange={e=>setF('budgetMax',e.target.value)} placeholder="e.g. 4.5"/>
-                  </NPField>
-                </div>
-                {/* Summary */}
-                <div style={{background:'#f5f4f0',borderRadius:8,padding:12,marginTop:8}}>
-                  <div style={{fontSize:11,fontWeight:500,color:'#555',marginBottom:8}}>Project Summary</div>
-                  {[
-                    ['Name', newProjectForm.name || '—'],
-                    ['Address', newProjectForm.address || '—'],
-                    ['State', newProjectForm.state],
-                    ['Goal', newProjectForm.goal.replace(/_/g,' ')],
-                    ['Method', newProjectForm.method],
-                    ['Units', newProjectForm.units || '—'],
-                    ['Partner', newProjectForm.partner || '—'],
-                    ['Budget', newProjectForm.budgetMin && newProjectForm.budgetMax ? `$${newProjectForm.budgetMin}M – $${newProjectForm.budgetMax}M` : '—'],
-                  ].map(([l,v]) => (
-                    <div key={l} style={{display:'flex',justifyContent:'space-between',fontSize:11,padding:'3px 0',borderBottom:'0.5px solid rgba(0,0,0,0.06)'}}>
-                      <span style={{color:'#888'}}>{l}</span>
-                      <span style={{fontWeight:500,maxWidth:280,textAlign:'right'}}>{v}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Modal footer */}
-          {!newProjectSuccess && (
-            <div style={{padding:'14px 24px',borderTop:'0.5px solid rgba(0,0,0,0.1)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'#fafaf8'}}>
-              <button className="btn" onClick={()=>{ if(newProjectStep>1) setNewProjectStep(s=>s-1); else setShowNewProject(false) }}>
-                {newProjectStep === 1 ? 'Cancel' : '← Back'}
-              </button>
-              <div style={{fontSize:11,color:'#aaa'}}>Step {newProjectStep} of 3</div>
-              {newProjectStep < 3
-                ? <button className="btn btn-primary" onClick={()=>setNewProjectStep(s=>s+1)} disabled={newProjectStep===1 && !newProjectForm.name}>Next →</button>
-                : <button className="btn btn-primary" onClick={submitNewProject}>Create Project ✓</button>
-              }
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  // ── App shell ─────────────────────────────────────────────────────────────────
   return (
     <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
-      <NewProjectModal/>
+      <NewProjectModal
+        show={showNewProject}
+        step={newProjectStep}
+        form={newProjectForm}
+        success={newProjectSuccess}
+        onClose={()=>setShowNewProject(false)}
+        onNext={()=>setNewProjectStep(s=>s+1)}
+        onBack={()=>{ if(newProjectStep>1) setNewProjectStep(s=>s-1); else setShowNewProject(false) }}
+        onSubmit={submitNewProject}
+        onField={(k,v)=>setNewProjectForm(f=>({...f,[k]:v}))}
+      />
       <Sidebar/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
         <Topbar/>
@@ -1302,6 +3099,7 @@ function Model3DViewer({url, filename, onClose}: {url?: string, filename: string
           {view==='ifindy' && <IFindyView/>}
           {view==='roles' && <div style={{flex:1,overflowY:'auto'}}><RolesView/></div>}
           {view==='notifications' && <div style={{flex:1,overflowY:'auto'}}><NotificationsView/></div>}
+          {view==='vertikaal' && <div style={{flex:1,overflowY:'auto'}}><VertikaalView screeningResult={screeningResult} screeningInput={screeningInput} onBack={()=>setView('ifindy')}/></div>}
         </div>
       </div>
     </div>
