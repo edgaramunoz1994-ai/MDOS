@@ -51,21 +51,19 @@ function ModelViewer() {
     setStatus('loading')
     const url = URL.createObjectURL(file)
 
+    const getLoader = () => {
+      if (ext === 'fbx') return import('three/examples/jsm/loaders/FBXLoader.js').then(m => ({ Loader: m.FBXLoader }))
+      if (ext === 'stl') return import('three/examples/jsm/loaders/STLLoader.js').then(m => ({ Loader: m.STLLoader }))
+      if (ext === 'obj') return import('three/examples/jsm/loaders/OBJLoader.js').then(m => ({ Loader: m.OBJLoader }))
+      if (ext === 'gltf' || ext === 'glb') return import('three/examples/jsm/loaders/GLTFLoader.js').then(m => ({ Loader: m.GLTFLoader }))
+      return Promise.reject(new Error('Unsupported format: .' + ext))
+    }
+
     Promise.all([
       import('three'),
       import('three/examples/jsm/controls/OrbitControls.js'),
-      ext === 'fbx' ? import('three/examples/jsm/loaders/FBXLoader.js') :
-      ext === 'stl' ? import('three/examples/jsm/loaders/STLLoader.js') :
-      ext === 'obj' ? import('three/examples/jsm/loaders/OBJLoader.js') :
-      (ext === 'gltf' || ext === 'glb') ? import('three/examples/jsm/loaders/GLTFLoader.js') :
-      Promise.reject(new Error('Unsupported format: .' + ext))
-    ]).then(([THREE, { OrbitControls }, loaderMod]: any[]) => {
-      const LoaderClass =
-        ext === 'fbx' ? loaderMod.FBXLoader :
-        ext === 'stl' ? loaderMod.STLLoader :
-        ext === 'obj' ? loaderMod.OBJLoader :
-        loaderMod.GLTFLoader
-
+      getLoader()
+    ]).then(([THREE, { OrbitControls }, { Loader: LoaderClass }]: any[]) => {
       const container = mountRef.current
       if (!container) return
       const w = container.clientWidth || 600
@@ -83,11 +81,14 @@ function ModelViewer() {
       controls.enableDamping = true
       scene.add(new THREE.AmbientLight(0xffffff, 0.7))
       const dir = new THREE.DirectionalLight(0xffffff, 1.2)
-      dir.position.set(10, 20, 10); scene.add(dir)
+      dir.position.set(10, 20, 10)
+      scene.add(dir)
       scene.add(new THREE.GridHelper(100, 50, 0x222222, 0x1a1a1a))
       new LoaderClass().load(url, (obj: any) => {
         let mesh = obj.scene ?? obj
-        if (obj.isBufferGeometry) mesh = new THREE.Mesh(obj, new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.2, roughness: 0.6 }))
+        if (obj.isBufferGeometry) {
+          mesh = new THREE.Mesh(obj, new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.2, roughness: 0.6 }))
+        }
         meshRef.current = mesh
         scene.add(mesh)
         const box = new THREE.Box3().setFromObject(mesh)
@@ -95,16 +96,23 @@ function ModelViewer() {
         const size = box.getSize(new THREE.Vector3())
         const dist = Math.max(size.x, size.y, size.z) * 2
         camera.position.set(center.x + dist * 0.6, center.y + dist * 0.5, center.z + dist * 0.8)
-        controls.target.copy(center); controls.update()
-        setStatus('loaded'); URL.revokeObjectURL(url)
+        controls.target.copy(center)
+        controls.update()
+        setStatus('loaded')
+        URL.revokeObjectURL(url)
         const animate = () => { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera) }
         animate()
       }, undefined, () => {
         setErrorMsg('Could not parse ' + file.name + '. Try converting to GLB.')
-        setStatus('error'); URL.revokeObjectURL(url)
+        setStatus('error')
+        URL.revokeObjectURL(url)
       })
     }).catch((e: any) => {
-      setErrorMsg(e.mess
+      setErrorMsg(e.message || 'Failed to load viewer.')
+      setStatus('error')
+    })
+  }, [])
+
   React.useEffect(() => {
     meshRef.current?.traverse((c: any) => {
       if (!c.isMesh) return
